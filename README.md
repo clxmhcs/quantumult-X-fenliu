@@ -3,4 +3,4 @@
 
 ## List 编辑器
 
-打开 `editor.html` 或 `large-editor.html` 后，可直接从仓库选择器中选择并自动读取，也可以手动填写 `用户名/仓库名` 或完整 GitHub URL。选择器会携带仓库默认分支；手动输入且分支留空时，编辑器会读取 GitHub 的 `default_branch`，失败后继续尝试 `main` 和 `master`。公开仓库只读无需 Token；授权后刷新选择器可显示令牌可访问的私有仓库，保存仍需要 Contents：Read and write 权限。
+打开 `editor.html` 或 `large-editor.html` 后，可直接从仓库选择器中选择并自动读取，也可以手动填写 `用户名/仓库名` 或完整 GitHub URL。选择器会携带仓库默认分支；手动输入且分支留空时，编辑器会读取 GitHub 的 `default_branch`，失败后继续尝试 `main` 和 `master`。GitHub 匿名 API 限流时，内置公开仓库列表和公共文件索引回退仍可用于只读加载；授权后刷新选择器可显示令牌可访问的私有仓库，保存仍需要 Contents：Read and write 权限并重新读取文件。
