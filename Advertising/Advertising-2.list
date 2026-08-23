@@ -1,0 +1,22 @@
+# NAME: AV
+# AUTHOR: clxmhcs
+# REPO: https://github.com/clxmhcs/quantumult-X-fenliu
+# UPDATED: 2025-06-12 02:06:19
+# HOST-KEYWORD: e
+# HOST-SUFFIX: 3
+# TOTAL: 3
+# ===== 中国天气广告拦截 =====
+DOMAIN-SUFFIX,pangolin-sdk-toutiao.com,REJECT
+DOMAIN-SUFFIX,pangolin-sdk-toutiao1.com,REJECT
+DOMAIN-SUFFIX,pangolin-sdk-toutiao-b.com,REJECT
+DOMAIN-SUFFIX,pglstatp-toutiao.com,REJECT
+DOMAIN-SUFFIX,sigmob.cn,REJECT
+DOMAIN-SUFFIX,mobads.baidu.com,REJECT
+DOMAIN-SUFFIX,adwangmai.com,REJECT
+DOMAIN-SUFFIX,beizi.biz,REJECT
+DOMAIN-SUFFIX,66mobi.com,REJECT
+DOMAIN-SUFFIX,ubixioe.com,REJECT
+DOMAIN-SUFFIX,cpatrk.net,REJECT
+DOMAIN-SUFFIX,halomobi.com,REJECT
+DOMAIN-SUFFIX,zztfly.com,REJECT
+
