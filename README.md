@@ -3,4 +3,4 @@
 
 ## List 编辑器
 
-打开 `editor.html` 或 `large-editor.html`，在“仓库”中填写 `用户名/仓库名` 或完整 GitHub URL。分支留空时会自动读取目标仓库的默认分支；公开仓库只读无需 Token，私有仓库及保存到 GitHub 时需要具有相应 Contents 权限的 Fine-grained Personal Access Token。
+打开 `editor.html` 或 `large-editor.html` 后，可直接从仓库选择器中选择并自动读取，也可以手动填写 `用户名/仓库名` 或完整 GitHub URL。选择器会携带仓库默认分支；手动输入且分支留空时，编辑器会读取 GitHub 的 `default_branch`，失败后继续尝试 `main` 和 `master`。公开仓库只读无需 Token；授权后刷新选择器可显示令牌可访问的私有仓库，保存仍需要 Contents：Read and write 权限。
