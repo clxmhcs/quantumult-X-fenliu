@@ -39,3 +39,12 @@ DOMAIN-SUFFIX,ubixioe.com,REJECT
 DOMAIN-SUFFIX,xdplt.com,REJECT
 DOMAIN-SUFFIX,gdfp.gifshow.com,REJECT
 DOMAIN-SUFFIX,open.e.kuaishou.com,REJECT
+
+# ===== 日历广告 =====
+DOMAIN-SUFFIX,adn.51wnl-cq.com,REJECT
+DOMAIN-SUFFIX,dspad.51wnl-cq.com,REJECT
+DOMAIN-SUFFIX,dsp.ads.umeng.com,REJECT
+DOMAIN-SUFFIX,cnlogs.umeng.com,REJECT
+DOMAIN-SUFFIX,ssp.iytcdn.com,REJECT
+DOMAIN-SUFFIX,domob.cn,REJECT
+URL-REGEX,.*51wnl-cq\.com/wnl-advert.*,REJECT
