@@ -74,3 +74,4 @@ jobs:
           git add large-editor.html
           git commit -m 'Optimize large editor load and find'
           git push origin HEAD:main
+# retry trigger
