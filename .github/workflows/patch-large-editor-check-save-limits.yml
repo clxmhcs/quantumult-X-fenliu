@@ -1,4 +1,4 @@
-# retrigger-v2
+# retrigger-v3
 name: Patch large editor check and save limits
 on:
   push:
@@ -19,36 +19,40 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
           p=Path('large-editor.html')
           s=p.read_text()
 
-          old='list=[];let pos=0,lineNo=1,scanned=0;s.checkBusy=true;'
-          new='list=[];let issueCount=0,pos=0,lineNo=1,scanned=0;const addIssue=(kind,line,message)=>{issueCount++;if(list.length<500)list.push([kind,line,message])};s.checkBusy=true;'
-          if s.count(old)!=1: raise SystemExit(f'check state anchor={s.count(old)}')
-          s=s.replace(old,new,1)
+          m=re.search(r'function check\(\)\{.*?\}(?=function find\(\))',s,re.S)
+          if not m: raise SystemExit('check function not found')
+          check=m.group(0)
+          check,n=re.subn(r'list=\[\];\s*let\s+pos=0,\s*lineNo=1,\s*scanned=0;\s*s\.checkBusy=true;',
+            'list=[];let issueCount=0,pos=0,lineNo=1,scanned=0;const addIssue=(kind,line,message)=>{issueCount++;if(list.length<500)list.push([kind,line,message])};s.checkBusy=true;',check,count=1)
+          if n!=1: raise SystemExit(f'check state replacements={n}')
+          reps=[
+            ('if(!list.length)','if(!issueCount)'),
+            ('list.slice(0,500).map','list.map'),
+            ('list.length>500?`<div class="issue">仅显示前 500 项，共 ${list.length} 项。</div>`','issueCount>list.length?`<div class="issue">仅显示前 ${list.length} 项，共 ${issueCount} 项。</div>`'),
+            ('status(`发现 ${list.length} 个待检查项`,"bad")','status(`发现 ${issueCount} 个待检查项`,"bad")'),
+            ('list.push(["warn",lineNo,`未识别类型 ${t||"(空)"}`])','addIssue("warn",lineNo,`未识别类型 ${t||"(空)"}`)'),
+            ('list.push(["bad",lineNo,"缺少匹配内容或策略"])','addIssue("bad",lineNo,"缺少匹配内容或策略")'),
+            ('list.push(["bad",lineNo,"缺少策略组 / 动作"])','addIssue("bad",lineNo,"缺少策略组 / 动作")'),
+          ]
+          for a,b in reps:
+              if check.count(a)!=1: raise SystemExit(f'check anchor {a[:36]!r} count={check.count(a)}')
+              check=check.replace(a,b,1)
+          s=s[:m.start()]+check+s[m.end():]
 
-          replacements={
-            'if(!list.length){e.issues.innerHTML=':'if(!issueCount){e.issues.innerHTML=',
-            'e.issues.innerHTML=list.slice(0,500).map(x=>':'e.issues.innerHTML=list.map(x=>',
-            ').join("")+(list.length>500?`<div class="issue">仅显示前 500 项，共 ${list.length} 项。</div>`:"");':').join("")+(issueCount>list.length?`<div class="issue">仅显示前 ${list.length} 项，共 ${issueCount} 项。</div>`:"");',
-            'status(`发现 ${list.length} 个待检查项`,"bad")':'status(`发现 ${issueCount} 个待检查项`,"bad")',
-            'list.push(["warn",lineNo,`未识别类型 ${t||"(空)"}`])':'addIssue("warn",lineNo,`未识别类型 ${t||"(空)"}`)',
-            'list.push(["bad",lineNo,"缺少匹配内容或策略"])':'addIssue("bad",lineNo,"缺少匹配内容或策略")',
-            'list.push(["bad",lineNo,"缺少策略组 / 动作"])':'addIssue("bad",lineNo,"缺少策略组 / 动作")',
-          }
-          for old2,new2 in replacements.items():
-              if s.count(old2)!=1: raise SystemExit(f'anchor {old2[:40]!r} count={s.count(old2)}')
-              s=s.replace(old2,new2,1)
-
-          old_save='if(s.size>90*1024*1024){toast("文件过大，建议使用 GitHub Desktop 或 git 提交");return}\nconst bodySnapshot=text(e.editor.value),snapshotRevision=s.revision,targetRepo=s.repo,targetBranch=s.branch,targetPath=s.path,targetSha=s.sha,targetMode=s.files.find(x=>x.path===s.path)?.mode||"100644",saveHeaders=auth(),jsonHeaders={...saveHeaders,"Content-Type":"application/json"},refPath=targetBranch.split("/").map(encodeURIComponent).join("/");'
-          new_save='const bodySnapshot=text(e.editor.value),bodySize=new Blob([bodySnapshot]).size;if(bodySize>60*1024*1024){toast("当前编辑内容超过 60 MB，建议使用 GitHub Desktop 或 git 提交");return}\nconst snapshotRevision=s.revision,targetRepo=s.repo,targetBranch=s.branch,targetPath=s.path,targetSha=s.sha,targetMode=s.files.find(x=>x.path===s.path)?.mode||"100644",saveHeaders=auth(),jsonHeaders={...saveHeaders,"Content-Type":"application/json"},refPath=targetBranch.split("/").map(encodeURIComponent).join("/");'
-          if s.count(old_save)!=1: raise SystemExit(f'save anchor={s.count(old_save)}')
-          s=s.replace(old_save,new_save,1)
-
-          old_size='s.sha=blob.sha;s.size=new Blob([bodySnapshot]).size;s.original=bodySnapshot;'
-          new_size='s.sha=blob.sha;s.size=bodySize;s.original=bodySnapshot;'
-          if s.count(old_size)!=1: raise SystemExit(f'size anchor={s.count(old_size)}')
-          s=s.replace(old_size,new_size,1)
+          guard='if(s.size>90*1024*1024){toast("文件过大，建议使用 GitHub Desktop 或 git 提交");return}'
+          if s.count(guard)!=1: raise SystemExit(f'save guard count={s.count(guard)}')
+          s=s.replace(guard,'',1)
+          prefix='const bodySnapshot=text(e.editor.value),snapshotRevision='
+          replacement='const bodySnapshot=text(e.editor.value),bodySize=new Blob([bodySnapshot]).size;if(bodySize>60*1024*1024){toast("当前编辑内容超过 60 MB，建议使用 GitHub Desktop 或 git 提交");return}\nconst snapshotRevision='
+          if s.count(prefix)!=1: raise SystemExit(f'body snapshot prefix count={s.count(prefix)}')
+          s=s.replace(prefix,replacement,1)
+          old_size='s.size=new Blob([bodySnapshot]).size'
+          if s.count(old_size)!=1: raise SystemExit(f'post-save size count={s.count(old_size)}')
+          s=s.replace(old_size,'s.size=bodySize',1)
 
           p.write_text(s)
           script=s.split('<script>',1)[1].split('</script>',1)[0]
