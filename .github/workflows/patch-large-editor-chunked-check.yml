@@ -1,0 +1,71 @@
+name: Patch large editor chunked check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-large-editor-chunked-check.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch low-memory line navigation and chunked check
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('large-editor.html')
+          s = p.read_text()
+
+          def one(old, new, name):
+              global s
+              n = s.count(old)
+              if n != 1:
+                  raise SystemExit(f'{name} anchor count={n}')
+              s = s.replace(old, new, 1)
+
+          one(
+              'const s={files:[],repos:PUBLIC_REPOS.map(x=>({...x})),path:"",sha:"",original:"",size:0,repo:"",branch:"",readOnly:false,repoBusy:false,saveBusy:false,dirty:false,revision:0,find:0,timer:0};',
+              'const s={files:[],repos:PUBLIC_REPOS.map(x=>({...x})),path:"",sha:"",original:"",size:0,repo:"",branch:"",readOnly:false,repoBusy:false,saveBusy:false,checkBusy:false,dirty:false,revision:0,find:0,timer:0};',
+              'state'
+          )
+
+          old_goto = r'''function gotoLine(n){const a=e.editor.value.split("\n"),st=a.slice(0,Math.max(0,n-1)).join("\n").length+(n>1?1:0);e.editor.focus();e.editor.setSelectionRange(st,st+(a[n-1]||"").length)}'''
+          new_goto = r'''function gotoLine(n){const v=e.editor.value,target=Math.max(1,n);let st=0,line=1;while(line<target){const at=v.indexOf("\n",st);if(at<0){st=v.length;break}st=at+1;line++}const end=v.indexOf("\n",st),to=end<0?v.length:end;e.editor.focus();e.editor.setSelectionRange(st,to)}'''
+          one(old_goto, new_goto, 'gotoLine')
+
+          old_check = r'''function check(){status("正在校验…");setTimeout(()=>{const list=[];text(e.editor.value).split("\n").forEach((l,i)=>{if(!rule(l))return;const p=parts(l),t=(p[0]||"").toUpperCase();if(!known.has(t))list.push(["warn",i+1,`未识别类型 ${t||"(空)"}`]);if(p.length<2||!p[1])list.push(["bad",i+1,"缺少匹配内容或策略"]);if(t!=="FINAL"&&p.length<3)list.push(["bad",i+1,"缺少策略组 / 动作"])});if(!list.length){e.issues.innerHTML='<div class="issue" style="background:color-mix(in srgb,var(--green) 15%,transparent);cursor:default">校验通过：未发现基础格式问题。</div>';e.issues.className="issues show";status("校验通过","ok");return}e.issues.innerHTML=list.slice(0,500).map(x=>`<div class="issue ${x[0]==="warn"?"warn":""}" data-line="${x[1]}">第 ${x[1]} 行：${x[2]}</div>`).join("")+(list.length>500?`<div class="issue">仅显示前 500 项，共 ${list.length} 项。</div>`:"");e.issues.className="issues show";e.issues.querySelectorAll("[data-line]").forEach(x=>x.onclick=()=>gotoLine(+x.dataset.line));status(`发现 ${list.length} 个待检查项`,"bad")},30)}'''
+          new_check = r'''function check(){if(s.checkBusy)return;const source=e.editor.value,checkRevision=s.revision,checkRepo=s.repo,checkBranch=s.branch,checkPath=s.path,list=[];let pos=0,lineNo=1,scanned=0;s.checkBusy=true;e.check.disabled=true;status("正在校验…");const done=()=>{s.checkBusy=false;e.check.disabled=false;if(s.repo!==checkRepo||s.branch!==checkBranch||s.path!==checkPath||s.revision!==checkRevision){status("内容已变化，已丢弃过期校验结果","bad");return}if(!list.length){e.issues.innerHTML='<div class="issue" style="background:color-mix(in srgb,var(--green) 15%,transparent);cursor:default">校验通过：未发现基础格式问题。</div>';e.issues.className="issues show";status("校验通过","ok");return}e.issues.innerHTML=list.slice(0,500).map(x=>`<div class="issue ${x[0]==="warn"?"warn":""}" data-line="${x[1]}">第 ${x[1]} 行：${x[2]}</div>`).join("")+(list.length>500?`<div class="issue">仅显示前 500 项，共 ${list.length} 项。</div>`:"");e.issues.className="issues show";e.issues.querySelectorAll("[data-line]").forEach(x=>x.onclick=()=>gotoLine(+x.dataset.line));status(`发现 ${list.length} 个待检查项`,"bad")};const batch=()=>{const deadline=performance.now()+12;while(pos<=source.length&&performance.now()<deadline){const nl=source.indexOf("\n",pos),end=nl<0?source.length:nl,l=source.slice(pos,end);if(rule(l)){const p=parts(l),t=(p[0]||"").toUpperCase();if(!known.has(t))list.push(["warn",lineNo,`未识别类型 ${t||"(空)"}`]);if(p.length<2||!p[1])list.push(["bad",lineNo,"缺少匹配内容或策略"]);if(t!=="FINAL"&&p.length<3)list.push(["bad",lineNo,"缺少策略组 / 动作"])}scanned++;if(nl<0){pos=source.length+1;break}pos=nl+1;lineNo++}if(pos<=source.length){status(`正在校验…已扫描 ${scanned.toLocaleString()} 行`);setTimeout(batch,0)}else done()};setTimeout(batch,0)}'''
+          one(old_check, new_check, 'check')
+
+          p.write_text(s)
+          script = s.split('<script>', 1)[1].split('</script>', 1)[0]
+          Path('/tmp/large-editor.js').write_text(script)
+          PY
+          node --check /tmp/large-editor.js
+          git diff --check
+          ! grep -Fq 'e.editor.value.split("\n"),st=a.slice' large-editor.html
+          grep -Fq 'checkBusy:false' large-editor.html
+          grep -Fq 'performance.now()+12' large-editor.html
+          grep -Fq '已丢弃过期校验结果' large-editor.html
+          git diff -- large-editor.html
+      - name: Commit patch
+        shell: bash
+        run: |
+          if git diff --quiet -- large-editor.html; then
+            echo 'No change needed'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add large-editor.html
+          git commit -m 'Chunk large editor validation work'
+          git push origin HEAD:main
