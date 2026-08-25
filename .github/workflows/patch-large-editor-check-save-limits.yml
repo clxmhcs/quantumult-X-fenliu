@@ -1,4 +1,4 @@
-# retrigger-v3
+# retrigger-v4
 name: Patch large editor check and save limits
 on:
   push:
@@ -26,9 +26,14 @@ jobs:
           m=re.search(r'function check\(\)\{.*?\}(?=function find\(\))',s,re.S)
           if not m: raise SystemExit('check function not found')
           check=m.group(0)
-          check,n=re.subn(r'list=\[\];\s*let\s+pos=0,\s*lineNo=1,\s*scanned=0;\s*s\.checkBusy=true;',
-            'list=[];let issueCount=0,pos=0,lineNo=1,scanned=0;const addIssue=(kind,line,message)=>{issueCount++;if(list.length<500)list.push([kind,line,message])};s.checkBusy=true;',check,count=1)
-          if n!=1: raise SystemExit(f'check state replacements={n}')
+          try:
+              a=check.index('list=[];')
+              b=check.index('s.checkBusy=true;',a)+len('s.checkBusy=true;')
+          except ValueError:
+              at=check.find('checkPath=s.path')
+              raise SystemExit('check markers not found: '+repr(check[max(0,at):at+220]))
+          new_state='list=[];let issueCount=0,pos=0,lineNo=1,scanned=0;const addIssue=(kind,line,message)=>{issueCount++;if(list.length<500)list.push([kind,line,message])};s.checkBusy=true;'
+          check=check[:a]+new_state+check[b:]
           reps=[
             ('if(!list.length)','if(!issueCount)'),
             ('list.slice(0,500).map','list.map'),
@@ -38,9 +43,9 @@ jobs:
             ('list.push(["bad",lineNo,"缺少匹配内容或策略"])','addIssue("bad",lineNo,"缺少匹配内容或策略")'),
             ('list.push(["bad",lineNo,"缺少策略组 / 动作"])','addIssue("bad",lineNo,"缺少策略组 / 动作")'),
           ]
-          for a,b in reps:
-              if check.count(a)!=1: raise SystemExit(f'check anchor {a[:36]!r} count={check.count(a)}')
-              check=check.replace(a,b,1)
+          for old,new in reps:
+              if check.count(old)!=1: raise SystemExit(f'check anchor {old[:36]!r} count={check.count(old)}')
+              check=check.replace(old,new,1)
           s=s[:m.start()]+check+s[m.end():]
 
           guard='if(s.size>90*1024*1024){toast("文件过大，建议使用 GitHub Desktop 或 git 提交");return}'
