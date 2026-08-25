@@ -1,0 +1,76 @@
+name: Patch large editor load and find
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-large-editor-load-find.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch chunked line count and low-copy find
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('large-editor.html')
+          s = p.read_text()
+
+          old_state = 'formatBusy:false,dedupeBusy:false,dirty:false,revision:0,find:0,timer:0'
+          new_state = 'formatBusy:false,dedupeBusy:false,dirty:false,revision:0,find:0,lineCountSeq:0,timer:0'
+          if s.count(old_state) != 1:
+              raise SystemExit(f'state anchor count={s.count(old_state)}')
+          s = s.replace(old_state, new_state, 1)
+
+          load_anchor = 'async function loadFile(path){'
+          if s.count(load_anchor) != 1:
+              raise SystemExit(f'load anchor count={s.count(load_anchor)}')
+          helper = r'''function scheduleLineCount(source,metaRepo,metaBranch,metaPath,metaSize,metaReadOnly){const seq=++s.lineCountSeq;let pos=0,lines=1;const batch=()=>{if(seq!==s.lineCountSeq)return;const deadline=performance.now()+12;while(pos<source.length&&performance.now()<deadline){const nl=source.indexOf("\n",pos);if(nl<0){pos=source.length;break}lines++;pos=nl+1}if(pos<source.length){setTimeout(batch,0);return}if(seq!==s.lineCountSeq||s.repo!==metaRepo||s.branch!==metaBranch||s.path!==metaPath)return;e.meta.textContent=`${metaRepo}@${metaBranch} · ${bytes(metaSize)} · ${lines.toLocaleString()} 行${metaReadOnly?" · 公共只读模式":""}`};setTimeout(batch,0)}
+'''
+          s = s.replace(load_anchor, helper + load_anchor, 1)
+
+          old_meta = 'e.editor.disabled=false;e.meta.textContent=`${s.repo}@${s.branch} · ${bytes(s.size)} · ${value.split("\\n").length.toLocaleString()} 行${s.readOnly?" · 公共只读模式":""}`;e.issues.className="issues";'
+          new_meta = 'e.editor.disabled=false;e.meta.textContent=`${s.repo}@${s.branch} · ${bytes(s.size)} · 正在统计行数…${s.readOnly?" · 公共只读模式":""}`;scheduleLineCount(value,s.repo,s.branch,path,s.size,s.readOnly);e.issues.className="issues";'
+          if s.count(old_meta) != 1:
+              raise SystemExit(f'meta anchor count={s.count(old_meta)}')
+          s = s.replace(old_meta, new_meta, 1)
+
+          pattern = r'function find\(\)\{.*?\}(?=function add\(\))'
+          matches = list(re.finditer(pattern, s, flags=re.S))
+          if len(matches) != 1:
+              raise SystemExit(f'find matches={len(matches)}')
+          new_find = r'''function find(){const q=e.search.value.trim();if(!q){e.search.focus();return}const source=e.editor.value,start=Math.max(0,e.editor.selectionEnd||s.find),escaped=q.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),re=new RegExp(escaped,"gi");re.lastIndex=start;let match=re.exec(source);if(!match){re.lastIndex=0;match=re.exec(source)}if(!match){toast("没有找到匹配内容");return}e.editor.focus();e.editor.setSelectionRange(match.index,match.index+match[0].length);s.find=match.index+match[0].length}'''
+          s = re.sub(pattern, lambda m: new_find, s, count=1, flags=re.S)
+
+          p.write_text(s)
+          script = s.split('<script>', 1)[1].split('</script>', 1)[0]
+          Path('/tmp/large-editor.js').write_text(script)
+          PY
+          node --check /tmp/large-editor.js
+          git diff --check
+          grep -q 'lineCountSeq:0' large-editor.html
+          grep -q '正在统计行数' large-editor.html
+          grep -q 'scheduleLineCount(value' large-editor.html
+          ! grep -q 'value.split("\\n").length' large-editor.html
+          ! grep -q 'e.editor.value.toLowerCase()' large-editor.html
+          grep -q 'new RegExp(escaped,"gi")' large-editor.html
+          git diff -- large-editor.html
+      - name: Commit patch
+        shell: bash
+        run: |
+          if git diff --quiet -- large-editor.html; then
+            echo 'No changes to commit'
+            exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add large-editor.html
+          git commit -m 'Optimize large editor load and find'
+          git push origin HEAD:main
