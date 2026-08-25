@@ -1,0 +1,53 @@
+name: Patch large editor rule types
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-large-editor-rule-types.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Align rule types with legacy editor
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('large-editor.html')
+          s=p.read_text()
+          old='const known=new Set(["HOST","HOST-SUFFIX","HOST-KEYWORD","HOST-WILDCARD","IP-CIDR","IP6-CIDR","GEOIP","USER-AGENT","URL-REGEX","PROCESS-NAME","PROCESS-PATH","FINAL","AND","OR","NOT"]),heads=new Set(["HOST","HOST-SUFFIX","HOST-KEYWORD","HOST-WILDCARD","IP-CIDR","IP6-CIDR","USER-AGENT","TOTAL"]);'
+          new='const known=new Set(["HOST","HOST-SUFFIX","HOST-KEYWORD","HOST-WILDCARD","IP-ASN","IP-CIDR","IP6-CIDR","GEOIP","USER-AGENT","URL-REGEX","PROCESS-NAME","PROCESS-PATH","FINAL","AND","OR","NOT"]),heads=new Set(["HOST","HOST-SUFFIX","HOST-KEYWORD","HOST-WILDCARD","IP-ASN","IP-CIDR","IP6-CIDR","GEOIP","USER-AGENT","TOTAL"]);'
+          if s.count(old)!=1:
+              raise SystemExit(f'rule type anchor count={s.count(old)}')
+          s=s.replace(old,new,1)
+          p.write_text(s)
+          script=s.split('<script>',1)[1].split('</script>',1)[0]
+          Path('/tmp/large-editor.js').write_text(script)
+          PY
+          node --check /tmp/large-editor.js
+          git diff --check
+          grep -Fq '"IP-ASN","IP-CIDR","IP6-CIDR","GEOIP"' large-editor.html
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('large-editor.html').read_text()
+          assert s.count('IP-ASN')==2, s.count('IP-ASN')
+          assert 'heads=new Set(["HOST","HOST-SUFFIX","HOST-KEYWORD","HOST-WILDCARD","IP-ASN","IP-CIDR","IP6-CIDR","GEOIP","USER-AGENT","TOTAL"])' in s
+          PY
+          git diff -- large-editor.html
+      - name: Commit patch
+        shell: bash
+        run: |
+          if git diff --quiet -- large-editor.html; then
+            echo 'No changes to commit'
+            exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add large-editor.html
+          git commit -m 'Align large editor rule types'
+          git push origin HEAD:main
