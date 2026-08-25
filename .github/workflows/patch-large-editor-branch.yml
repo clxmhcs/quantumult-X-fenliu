@@ -1,0 +1,53 @@
+name: Patch large editor branch handling
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-large-editor-branch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch branch handling
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('large-editor.html')
+          s = p.read_text()
+          old_tree = '''async function readTree(target,requested){const candidates=[];if(requested)candidates.push(requested);const selected=s.repos.find(x=>x.full_name.toLowerCase()===target.toLowerCase());if(selected?.default_branch)candidates.push(selected.default_branch);let infoError=null;if(!requested&&!selected?.default_branch){try{const info=await json(apiFor(target,""),{headers:auth()});if(info.default_branch)candidates.push(String(info.default_branch))}catch(x){infoError=x}}candidates.push("main","master");const unique=[...new Set(candidates.filter(Boolean))];let lastError=infoError;for(const candidate of unique){try{return {branch:candidate,data:await json(apiFor(target,`git/trees/${encodeURIComponent(candidate)}?recursive=1`),{headers:auth()}),source:"github"}}catch(x){lastError=x}}if(!e.token.value.trim()&&(selected?.private===false||!selected)){for(const candidate of unique){try{return {branch:candidate,data:await jsDelivrTree(target,candidate),source:"jsdelivr"}}catch(x){lastError=x}}}const detail=lastError?.message&&lastError.message!=="Load failed"?`：${lastError.message}`:"";throw new Error(`无法读取 ${target} 或识别默认分支${detail}。私有仓库请填写 Token 后刷新仓库；公开仓库请稍后重试`)}'''
+          new_tree = '''async function readTree(target,requested){const selected=s.repos.find(x=>x.full_name.toLowerCase()===target.toLowerCase());if(requested){let lastError=null;try{return {branch:requested,data:await json(apiFor(target,`git/trees/${encodeURIComponent(requested)}?recursive=1`),{headers:auth()}),source:"github"}}catch(x){lastError=x}if(!e.token.value.trim()&&(selected?.private===false||!selected)){try{return {branch:requested,data:await jsDelivrTree(target,requested),source:"jsdelivr"}}catch(x){lastError=x}}const detail=lastError?.message&&lastError.message!=="Load failed"?`：${lastError.message}`:"";throw new Error(`无法读取指定分支 ${target}@${requested}${detail}。请检查分支名称或访问权限`)}const candidates=[];if(selected?.default_branch)candidates.push(selected.default_branch);let infoError=null;if(!selected?.default_branch){try{const info=await json(apiFor(target,""),{headers:auth()});if(info.default_branch)candidates.push(String(info.default_branch))}catch(x){infoError=x}}candidates.push("main","master");const unique=[...new Set(candidates.filter(Boolean))];let lastError=infoError;for(const candidate of unique){try{return {branch:candidate,data:await json(apiFor(target,`git/trees/${encodeURIComponent(candidate)}?recursive=1`),{headers:auth()}),source:"github"}}catch(x){lastError=x}}if(!e.token.value.trim()&&(selected?.private===false||!selected)){for(const candidate of unique){try{return {branch:candidate,data:await jsDelivrTree(target,candidate),source:"jsdelivr"}}catch(x){lastError=x}}}const detail=lastError?.message&&lastError.message!=="Load failed"?`：${lastError.message}`:"";throw new Error(`无法读取 ${target} 或识别默认分支${detail}。私有仓库请填写 Token 后刷新仓库；公开仓库请稍后重试`)}'''
+          old_files = '''async function readFiles(){if(s.saveBusy){toast("正在保存，请完成后再切换仓库或分支");return}const target=repo();if(!/^[^/\\s]+\\/[^/\\s]+$/.test(target)){status("仓库格式应为 用户名/仓库名 或完整 GitHub URL","bad");return}if(s.path&&e.editor.value!==s.original&&!confirm("当前文件有未保存修改。仍然读取其它仓库吗？"))return;status(`正在读取 ${target} 并识别默认分支…`);try{const result=await readTree(target,e.branch.value.trim()),targetBranch=result.branch,d=result.data;s.repo=target;s.branch=targetBranch;s.readOnly=result.source==="jsdelivr";e.repo.value=target;e.branch.value=targetBranch;s.path="";s.sha="";s.original="";s.files=(d.tree||[]).filter(x=>x.type==="blob"&&/\\.list$/i.test(x.path)).sort((a,b)=>a.path.localeCompare(b.path,"zh-CN"));render();status(`在 ${target}@${targetBranch} 找到 ${s.files.length} 个 .list 文件${s.readOnly?" · 公共索引回退":""}`,"ok");if(s.files.length){const f=s.files.find(x=>/(^|\\/)Apple\\.list$/i.test(x.path))||s.files[0];await loadFile(f.path)}else targetChanged(false)}catch(err){status(err.message,"bad")}}'''
+          new_files = '''async function readFiles(){if(s.saveBusy){toast("正在保存，请完成后再切换仓库或分支");return}const target=repo();if(!/^[^/\\s]+\\/[^/\\s]+$/.test(target)){status("仓库格式应为 用户名/仓库名 或完整 GitHub URL","bad");return}if(s.path&&e.editor.value!==s.original&&!confirm("当前文件有未保存修改。仍然读取其它仓库吗？"))return;const requested=e.branch.value.trim();status(requested?`正在读取 ${target}@${requested}…`:`正在读取 ${target} 并识别默认分支…`);try{const result=await readTree(target,requested),targetBranch=result.branch,d=result.data;s.repo=target;s.branch=targetBranch;s.readOnly=result.source==="jsdelivr";e.repo.value=target;e.branch.value=targetBranch;s.path="";s.sha="";s.original="";s.files=(d.tree||[]).filter(x=>x.type==="blob"&&/\\.list$/i.test(x.path)).sort((a,b)=>a.path.localeCompare(b.path,"zh-CN"));render();status(`在 ${target}@${targetBranch} 找到 ${s.files.length} 个 .list 文件${s.readOnly?" · 公共索引回退":""}`,"ok");if(s.files.length){const f=s.files.find(x=>/(^|\\/)Apple\\.list$/i.test(x.path))||s.files[0];await loadFile(f.path)}else targetChanged(false)}catch(err){status(err.message,"bad")}}'''
+          if s.count(old_tree) != 1:
+              raise SystemExit(f'readTree anchor count={s.count(old_tree)}')
+          if s.count(old_files) != 1:
+              raise SystemExit(f'readFiles anchor count={s.count(old_files)}')
+          s = s.replace(old_tree, new_tree).replace(old_files, new_files)
+          p.write_text(s)
+          script = s.split('<script>', 1)[1].split('</script>', 1)[0]
+          Path('/tmp/large-editor.js').write_text(script)
+          PY
+          node --check /tmp/large-editor.js
+          git diff --check
+          git diff -- large-editor.html
+      - name: Commit patch
+        shell: bash
+        run: |
+          if git diff --quiet -- large-editor.html; then
+            echo 'No change needed'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add large-editor.html
+          git commit -m 'Reject invalid explicit branch in large editor'
+          git push origin HEAD:main
