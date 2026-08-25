@@ -1,0 +1,98 @@
+name: Add save status
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/add-save-status.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add save progress status
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('large-editor.html')
+          s=p.read_text()
+          def one(old,new,label):
+              global s
+              n=s.count(old)
+              if n!=1:
+                  raise SystemExit(f'{label}: anchor count={n}')
+              s=s.replace(old,new,1)
+
+          one('<button id="save" class="btn primary" type="button" disabled>保存到 GitHub</button></div></div>',
+              '<button id="save" class="btn primary" type="button" disabled>保存到 GitHub</button><span id="saveState" class="status" aria-live="polite"></span></div></div>',
+              'save state html')
+
+          one('download:$("download"),save:$("save"),issues:$("issues"),toast:$("toast")',
+              'download:$("download"),save:$("save"),saveState:$("saveState"),issues:$("issues"),toast:$("toast")',
+              'element map')
+
+          one('function updateSaveButton(){const token=tokenValue(e.token.value)',
+              'function setSaveState(value="",kind=""){e.saveState.textContent=value;e.saveState.className=`status ${kind||""}`}function updateSaveButton(){const token=tokenValue(e.token.value)',
+              'save state helper')
+
+          one('function markDirty(){s.revision++;s.dirty=true;refresh()}',
+              'function markDirty(){s.revision++;s.dirty=true;setSaveState();refresh()}',
+              'clear state on edit')
+
+          one('e.issues.innerHTML="";e.issues.className="issues";if(clearFiles)render();e.save.disabled=true;refresh()}',
+              'e.issues.innerHTML="";e.issues.className="issues";setSaveState();if(clearFiles)render();e.save.disabled=true;refresh()}',
+              'clear state on unload')
+
+          one('s.original=value;e.editor.value=value;s.dirty=false;s.revision=0;e.editor.disabled=false;',
+              's.original=value;e.editor.value=value;s.dirty=false;s.revision=0;setSaveState();e.editor.disabled=false;',
+              'clear state on load')
+
+          one('s.saveBusy=true;e.save.disabled=true;e.editor.disabled=true;',
+              's.saveBusy=true;setSaveState("保存中…");e.save.disabled=true;e.editor.disabled=true;',
+              'saving state')
+
+          one('if(latest.sha!==targetSha&&!confirm("远程文件已经变化，是否覆盖远程版本？")){status("已取消保存");return}',
+              'if(latest.sha!==targetSha&&!confirm("远程文件已经变化，是否覆盖远程版本？")){setSaveState();status("已取消保存");return}',
+              'cancel state')
+
+          one('refresh();status("已保存到 GitHub","ok");toast("保存成功；Quantumult X 更新资源后即可获取新规则")}',
+              'refresh();setSaveState("已保存至 GitHub","ok");status("已保存到 GitHub","ok");toast("保存成功；Quantumult X 更新资源后即可获取新规则")}',
+              'success state')
+
+          one('}catch(err){status(err.message,"bad");toast("保存失败，请检查 Token 权限、分支状态或网络")}',
+              '}catch(err){setSaveState();status(err.message,"bad");toast("保存失败，请检查 Token 权限、分支状态或网络")}',
+              'failure state')
+
+          p.write_text(s)
+          PY
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,tempfile,subprocess
+          s=Path('large-editor.html').read_text()
+          checks={
+            'save state element':'id="saveState"' in s,
+            'save state map':'saveState:$("saveState")' in s,
+            'save helper':'function setSaveState(' in s,
+            'saving label':'setSaveState("保存中…")' in s,
+            'saved label':'setSaveState("已保存至 GitHub","ok")' in s,
+            'clear on edit':'function markDirty(){s.revision++;s.dirty=true;setSaveState();refresh()}' in s,
+            'strict save guard':'function updateSaveButton()' in s and '!s.dirty' in s and 'token===s.authToken' in s,
+          }
+          bad=[k for k,v in checks.items() if not v]
+          if bad: raise SystemExit('missing checks: '+', '.join(bad))
+          scripts=re.findall(r'<script>(.*?)</script>',s,re.S)
+          f=tempfile.NamedTemporaryFile('w',suffix='.js',delete=False)
+          f.write('\n'.join(scripts));f.close()
+          subprocess.run(['node','--check',f.name],check=True)
+          print('PASS save status checks')
+          PY
+      - name: Commit save status
+        run: |
+          if git diff --quiet -- large-editor.html; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add large-editor.html
+          git commit -m "Show GitHub save progress beside button"
+          git push
