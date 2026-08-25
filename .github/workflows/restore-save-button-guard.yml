@@ -1,0 +1,93 @@
+name: Restore save button guard
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/restore-save-button-guard.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore strict save button rules
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('large-editor.html')
+          s=p.read_text()
+          def one(old,new,label):
+              global s
+              n=s.count(old)
+              if n!=1:
+                  raise SystemExit(f'{label}: anchor count={n}')
+              s=s.replace(old,new,1)
+
+          one('authLogin:"",authRepo:"",saveBusy:false','authLogin:"",authRepo:"",authToken:"",saveBusy:false','state authToken')
+
+          one('function refresh(){e.dirty.textContent=!s.path?"未加载文件":s.dirty?"有未保存修改":"已同步"}function markDirty(){s.revision++;s.dirty=true;refresh()}',
+              'function updateSaveButton(){const token=tokenValue(e.token.value),verified=!!token&&token===s.authToken&&!!s.authRepo&&s.authRepo.toLowerCase()===s.repo.toLowerCase(),targetMatches=!!s.path&&repo().toLowerCase()===s.repo.toLowerCase()&&e.branch.value.trim()===s.branch;e.save.disabled=!verified||!s.path||!s.sha||!s.dirty||s.saveBusy||s.readOnly||!targetMatches}function refresh(){e.dirty.textContent=!s.path?"未加载文件":s.dirty?"有未保存修改":"已同步";updateSaveButton()}function markDirty(){s.revision++;s.dirty=true;refresh()}',
+              'central save guard')
+
+          one('s.authBusy=true;e.verifyToken.disabled=true;setAuthState("","正在验证 Token…",`正在验证对 ${target} 的读取权限`);',
+              's.authToken="";updateSaveButton();s.authBusy=true;e.verifyToken.disabled=true;setAuthState("","正在验证 Token…",`正在验证对 ${target} 的读取权限`);',
+              'verify start')
+          one('s.authLogin=login;s.authRepo=String(info.full_name||target);',
+              's.authLogin=login;s.authRepo=String(info.full_name||target);s.authToken=token;',
+              'verify success')
+          one('}catch(x){s.authLogin="";s.authRepo="";setAuthState("bad","Token 验证失败",githubErrorLabel(x,true));toast("GitHub Token 验证失败")}finally{s.authBusy=false;e.verifyToken.disabled=false}',
+              '}catch(x){s.authLogin="";s.authRepo="";s.authToken="";setAuthState("bad","Token 验证失败",githubErrorLabel(x,true));toast("GitHub Token 验证失败")}finally{s.authBusy=false;e.verifyToken.disabled=false;updateSaveButton()}',
+              'verify failure/finally')
+          one('function clearToken(){e.token.value="";s.authLogin="";s.authRepo="";setAuthState("","Token 未验证","读取公开仓库无需 Token；私有仓库及保存需要相应仓库权限");toast("Token 已清除");loadRepositories()}',
+              'function clearToken(){e.token.value="";s.authLogin="";s.authRepo="";s.authToken="";setAuthState("","Token 未验证","读取公开仓库无需 Token；私有仓库及保存需要相应仓库权限");updateSaveButton();toast("Token 已清除");loadRepositories()}',
+              'clear token')
+
+          one('function targetChanged(announce=true){if(!s.path){e.save.disabled=true;return false}const changed=repo().toLowerCase()!==s.repo.toLowerCase()||e.branch.value.trim()!==s.branch;e.save.disabled=s.saveBusy||changed;if(changed&&announce)status(`仓库或分支已修改；当前文件仍属于 ${s.repo}@${s.branch}，请重新读取后再保存`,"bad");return changed}',
+              'function targetChanged(announce=true){if(!s.path){updateSaveButton();return false}const changed=repo().toLowerCase()!==s.repo.toLowerCase()||e.branch.value.trim()!==s.branch;updateSaveButton();if(changed&&announce)status(`仓库或分支已修改；当前文件仍属于 ${s.repo}@${s.branch}，请重新读取后再保存`,"bad");return changed}',
+              'target changed')
+
+          one('e.verifyToken.onclick=verifyToken;e.token.onkeydown=x=>{if(x.key==="Enter")verifyToken()};e.clearToken.onclick=clearToken;',
+              'e.verifyToken.onclick=verifyToken;e.token.oninput=updateSaveButton;e.token.onkeydown=x=>{if(x.key==="Enter")verifyToken()};e.clearToken.onclick=clearToken;',
+              'token input guard')
+
+          n=s.count('s.saveBusy=false;')
+          if n!=1:
+              raise SystemExit(f'save finally marker count={n}')
+          s=s.replace('s.saveBusy=false;','s.saveBusy=false;updateSaveButton();',1)
+
+          p.write_text(s)
+          PY
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,tempfile,subprocess
+          s=Path('large-editor.html').read_text()
+          checks={
+            'central guard':'function updateSaveButton()' in s,
+            'verified token identity':'token===s.authToken' in s,
+            'requires dirty':'!s.dirty' in s,
+            'requires sha':'!s.sha' in s,
+            'requires read-write mode':'s.readOnly' in s,
+            'auth repo match':'s.authRepo.toLowerCase()===s.repo.toLowerCase()' in s,
+            'target repo match':'repo().toLowerCase()===s.repo.toLowerCase()' in s,
+            'branch match':'e.branch.value.trim()===s.branch' in s,
+            'token input refresh':'e.token.oninput=updateSaveButton' in s,
+            'save finish refresh':'s.saveBusy=false;updateSaveButton();' in s,
+          }
+          bad=[k for k,v in checks.items() if not v]
+          if bad: raise SystemExit('missing checks: '+', '.join(bad))
+          scripts=re.findall(r'<script>(.*?)</script>',s,re.S)
+          f=tempfile.NamedTemporaryFile('w',suffix='.js',delete=False)
+          f.write('\n'.join(scripts));f.close()
+          subprocess.run(['node','--check',f.name],check=True)
+          print('PASS save button guard checks')
+          PY
+      - name: Commit save button guard
+        run: |
+          if git diff --quiet -- large-editor.html; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add large-editor.html
+          git commit -m "Restore strict save button eligibility"
+          git push
