@@ -32,7 +32,7 @@ jobs:
               raise SystemExit(f'b64out anchor count={s.count(old_b64)}')
           s = s.replace(old_b64, '', 1)
 
-          new_save = textwrap.dedent(r'''\
+          new_save = textwrap.dedent('''
           async function save(){
           if(s.saveBusy)return;
           if(!s.path){toast("请先加载一个文件");return}
@@ -66,7 +66,7 @@ jobs:
           }catch(err){status(err.message,"bad");toast("保存失败，请检查 Token 权限、分支状态或网络")}
           finally{s.saveBusy=false;e.editor.disabled=false;e.repo.disabled=false;e.branch.disabled=false;e.repoSelect.disabled=false;e.read.disabled=false;targetChanged(false);refresh()}
           }
-          ''')
+          ''').lstrip('\n')
 
           pattern = r'async function save\(\)\{.*?\n\}\n(?=const saveWithWriteAccess=save;)'
           matches = list(re.finditer(pattern, s, flags=re.S))
