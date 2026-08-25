@@ -1,4 +1,4 @@
-# retrigger
+# retrigger-v2
 name: Patch large editor check and save limits
 on:
   push:
@@ -22,8 +22,8 @@ jobs:
           p=Path('large-editor.html')
           s=p.read_text()
 
-          old='const source=e.editor.value,checkRevision=s.revision,checkRepo=s.repo,checkBranch=s.branch,checkPath=s.path,list=[];let pos=0,lineNo=1,scanned=0;s.checkBusy=true;'
-          new='const source=e.editor.value,checkRevision=s.revision,checkRepo=s.repo,checkBranch=s.branch,checkPath=s.path,list=[];let issueCount=0,pos=0,lineNo=1,scanned=0;const addIssue=(kind,line,message)=>{issueCount++;if(list.length<500)list.push([kind,line,message])};s.checkBusy=true;'
+          old='list=[];let pos=0,lineNo=1,scanned=0;s.checkBusy=true;'
+          new='list=[];let issueCount=0,pos=0,lineNo=1,scanned=0;const addIssue=(kind,line,message)=>{issueCount++;if(list.length<500)list.push([kind,line,message])};s.checkBusy=true;'
           if s.count(old)!=1: raise SystemExit(f'check state anchor={s.count(old)}')
           s=s.replace(old,new,1)
 
