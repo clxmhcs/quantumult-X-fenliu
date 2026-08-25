@@ -1,4 +1,4 @@
-name: Patch large editor Git Data save
+name: Finalize large editor Git Data save
 
 on:
   push:
@@ -16,85 +16,35 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Patch Git Data save path
+      - name: Remove post-save UTF-8 allocation
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
-          import textwrap
-
           p = Path('large-editor.html')
           s = p.read_text()
-
-          old_b64 = 'function b64out(v){let x="";for(const n of new TextEncoder().encode(v))x+=String.fromCharCode(n);return btoa(x)}'
-          if s.count(old_b64) != 1:
-              raise SystemExit(f'b64out anchor count={s.count(old_b64)}')
-          s = s.replace(old_b64, '', 1)
-
-          new_save = textwrap.dedent('''
-          async function save(){
-          if(s.saveBusy)return;
-          if(!s.path){toast("请先加载一个文件");return}
-          if(targetChanged(false)){status(`保存已阻止：当前加载目标是 ${s.repo}@${s.branch}，请重新读取仓库/分支后再保存`,"bad");toast("仓库或分支已改变，请重新读取后再保存");return}
-          if(!e.token.value.trim()){toast("保存需要填写 GitHub Token");e.token.focus();return}
-          if(s.size>90*1024*1024){toast("文件过大，建议使用 GitHub Desktop 或 git 提交");return}
-          const bodySnapshot=text(e.editor.value),snapshotRevision=s.revision,targetRepo=s.repo,targetBranch=s.branch,targetPath=s.path,targetSha=s.sha,targetMode=s.files.find(x=>x.path===s.path)?.mode||"100644",saveHeaders=auth(),jsonHeaders={...saveHeaders,"Content-Type":"application/json"},refPath=targetBranch.split("/").map(encodeURIComponent).join("/");
-          s.saveBusy=true;e.save.disabled=true;e.editor.disabled=true;e.repo.disabled=true;e.branch.disabled=true;e.repoSelect.disabled=true;e.read.disabled=true;
-          try{
-          status(`正在冻结远程分支 ${targetRepo}@${targetBranch}…`);
-          const head=await json(apiFor(targetRepo,`git/ref/heads/${refPath}`),{headers:saveHeaders}),headSha=head.object?.sha;
-          if(!headSha)throw new Error("无法获取远程分支 HEAD");
-          const p=safe(targetPath),latest=await json(apiFor(targetRepo,`contents/${p}?ref=${encodeURIComponent(headSha)}`),{headers:saveHeaders});
-          if(latest.sha!==targetSha&&!confirm("远程文件已经变化，是否覆盖远程版本？")){status("已取消保存");return}
-          status("正在创建 UTF-8 Blob…");
-          const blob=await json(apiFor(targetRepo,"git/blobs"),{method:"POST",headers:jsonHeaders,body:JSON.stringify({content:bodySnapshot,encoding:"utf-8"})});
-          if(!blob.sha)throw new Error("GitHub 未返回 Blob SHA");
-          status("正在创建提交…");
-          const baseCommit=await json(apiFor(targetRepo,`git/commits/${encodeURIComponent(headSha)}`),{headers:saveHeaders}),baseTree=baseCommit.tree?.sha;
-          if(!baseTree)throw new Error("无法获取远程基础 Tree");
-          const tree=await json(apiFor(targetRepo,"git/trees"),{method:"POST",headers:jsonHeaders,body:JSON.stringify({base_tree:baseTree,tree:[{path:targetPath,mode:targetMode,type:"blob",sha:blob.sha}]})});
-          if(!tree.sha)throw new Error("GitHub 未返回 Tree SHA");
-          const commit=await json(apiFor(targetRepo,"git/commits"),{method:"POST",headers:jsonHeaders,body:JSON.stringify({message:`编辑 ${targetPath}`,tree:tree.sha,parents:[headSha]})});
-          if(!commit.sha)throw new Error("GitHub 未返回 Commit SHA");
-          status("正在更新远程分支…");
-          await json(apiFor(targetRepo,`git/refs/heads/${refPath}`),{method:"PATCH",headers:jsonHeaders,body:JSON.stringify({sha:commit.sha,force:false})});
-          if(s.repo===targetRepo&&s.branch===targetBranch&&s.path===targetPath){s.sha=blob.sha;s.size=new TextEncoder().encode(bodySnapshot).length;s.original=bodySnapshot;if(s.revision===snapshotRevision)s.dirty=false}
-          refresh();
-          status("已保存到 GitHub","ok");
-          toast("保存成功；Quantumult X 更新资源后即可获取新规则")
-          }catch(err){status(err.message,"bad");toast("保存失败，请检查 Token 权限、分支状态或网络")}
-          finally{s.saveBusy=false;e.editor.disabled=false;e.repo.disabled=false;e.branch.disabled=false;e.repoSelect.disabled=false;e.read.disabled=false;targetChanged(false);refresh()}
-          }
-          ''').lstrip('\n')
-
-          pattern = r'async function save\(\)\{.*?\n\}\n(?=const saveWithWriteAccess=save;)'
-          matches = list(re.finditer(pattern, s, flags=re.S))
-          if len(matches) != 1:
-              raise SystemExit(f'save function matches={len(matches)}')
-          s = re.sub(pattern, new_save + '\n', s, count=1, flags=re.S)
-
+          old = 's.size=new TextEncoder().encode(bodySnapshot).length'
+          new = 's.size=new Blob([bodySnapshot]).size'
+          if s.count(old) != 1:
+              raise SystemExit(f'size anchor count={s.count(old)}')
+          s = s.replace(old, new, 1)
           p.write_text(s)
           script = s.split('<script>', 1)[1].split('</script>', 1)[0]
           Path('/tmp/large-editor.js').write_text(script)
           PY
           node --check /tmp/large-editor.js
           git diff --check
+          ! grep -q 'new TextEncoder().encode(bodySnapshot)' large-editor.html
+          grep -q 's.size=new Blob(\[bodySnapshot\]).size' large-editor.html
           ! grep -q 'function b64out' large-editor.html
-          ! grep -q 'content:b64out' large-editor.html
-          grep -q 'encoding:"utf-8"' large-editor.html
           grep -q 'git/blobs' large-editor.html
           grep -q 'force:false' large-editor.html
           git diff -- large-editor.html
       - name: Commit patch
         shell: bash
         run: |
-          if git diff --quiet -- large-editor.html; then
-            echo 'No change needed'
-            exit 0
-          fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add large-editor.html
-          git commit -m 'Use Git Data API for large editor saves'
+          git commit -m 'Avoid post-save UTF-8 allocation'
           git push origin HEAD:main
