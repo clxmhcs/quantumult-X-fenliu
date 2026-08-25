@@ -1,0 +1,121 @@
+name: Patch large editor dirty state
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-large-editor-dirty.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch dirty-state tracking
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('large-editor.html')
+          s = p.read_text()
+
+          def one(old, new, name):
+              global s
+              n = s.count(old)
+              if n != 1:
+                  raise SystemExit(f'{name} anchor count={n}')
+              s = s.replace(old, new, 1)
+
+          one(
+              'const s={files:[],repos:PUBLIC_REPOS.map(x=>({...x})),path:"",sha:"",original:"",size:0,repo:"",branch:"",readOnly:false,repoBusy:false,saveBusy:false,find:0,timer:0};',
+              'const s={files:[],repos:PUBLIC_REPOS.map(x=>({...x})),path:"",sha:"",original:"",size:0,repo:"",branch:"",readOnly:false,repoBusy:false,saveBusy:false,dirty:false,revision:0,find:0,timer:0};',
+              'state'
+          )
+          one(
+              'function refresh(){e.dirty.textContent=!s.path?"未加载文件":e.editor.value===s.original?"已同步":"有未保存修改"}',
+              'function refresh(){e.dirty.textContent=!s.path?"未加载文件":s.dirty?"有未保存修改":"已同步"}function markDirty(){s.revision++;s.dirty=true;refresh()}',
+              'refresh'
+          )
+
+          old = 's.path&&e.editor.value!==s.original'
+          n = s.count(old)
+          if n != 3:
+              raise SystemExit(f'unsaved comparison count={n}')
+          s = s.replace(old, 's.path&&s.dirty')
+
+          one(
+              's.path="";s.sha="";s.original="";s.files=',
+              's.path="";s.sha="";s.original="";s.dirty=false;s.revision=0;s.files=',
+              'read reset'
+          )
+          one(
+              's.original=value;e.editor.value=value;e.editor.disabled=false;',
+              's.original=value;e.editor.value=value;s.dirty=false;s.revision=0;e.editor.disabled=false;',
+              'load reset'
+          )
+          one(
+              'e.editor.value=v;refresh();toast("已整理规则格式")',
+              'if(v!==e.editor.value){e.editor.value=v;markDirty()}else refresh();toast("已整理规则格式")',
+              'format dirty'
+          )
+          one(
+              'e.editor.value=text(e.editor.value).split("\\n").filter(l=>{if(!rule(l))return true;const k=norm(l);if(seen.has(k)){n++;return false}seen.add(k);return true}).join("\\n");refresh();toast(n?`已移除 ${n} 条重复规则`:"没有完全重复的规则")',
+              'e.editor.value=text(e.editor.value).split("\\n").filter(l=>{if(!rule(l))return true;const k=norm(l);if(seen.has(k)){n++;return false}seen.add(k);return true}).join("\\n");if(n)markDirty();else refresh();toast(n?`已移除 ${n} 条重复规则`:"没有完全重复的规则")',
+              'dedupe dirty'
+          )
+          one(
+              'setTimeout(()=>{const z=count(e.editor.value),c=z.c;let hit=false;e.editor.value=text(e.editor.value).split("\\n").map(l=>{',
+              'setTimeout(()=>{const before=e.editor.value,z=count(before),c=z.c;let hit=false;const next=text(before).split("\\n").map(l=>{',
+              'header start'
+          )
+          one(
+              '}).join("\\n");refresh();status("统计已完成","ok");toast(hit?"已更新现有头部统计":"当前文件没有可更新的统计头部")},30)',
+              '}).join("\\n");if(next!==before){e.editor.value=next;markDirty()}else refresh();status("统计已完成","ok");toast(hit?"已更新现有头部统计":"当前文件没有可更新的统计头部")},30)',
+              'header finish'
+          )
+          one(
+              '+`${t},${v},${p}\\n`;refresh()}',
+              '+`${t},${v},${p}\\n`;markDirty()}',
+              'add dirty'
+          )
+          one(
+              'const bodySnapshot=text(e.editor.value),targetRepo=s.repo,targetBranch=s.branch,targetPath=s.path,targetSha=s.sha,saveHeaders=auth();',
+              'const bodySnapshot=text(e.editor.value),snapshotRevision=s.revision,targetRepo=s.repo,targetBranch=s.branch,targetPath=s.path,targetSha=s.sha,saveHeaders=auth();',
+              'save snapshot revision'
+          )
+          one(
+              'if(s.repo===targetRepo&&s.branch===targetBranch&&s.path===targetPath){s.sha=d.content?.sha||latest.sha;s.original=bodySnapshot}',
+              'if(s.repo===targetRepo&&s.branch===targetBranch&&s.path===targetPath){s.sha=d.content?.sha||latest.sha;s.original=bodySnapshot;if(s.revision===snapshotRevision)s.dirty=false}',
+              'save clean state'
+          )
+          one('e.editor.oninput=refresh;', 'e.editor.oninput=markDirty;', 'input dirty')
+          one(
+              'e.editor.setRangeText("  ",e.editor.selectionStart,e.editor.selectionEnd,"end");refresh()',
+              'e.editor.setRangeText("  ",e.editor.selectionStart,e.editor.selectionEnd,"end");markDirty()',
+              'tab dirty'
+          )
+
+          p.write_text(s)
+          script = s.split('<script>', 1)[1].split('</script>', 1)[0]
+          Path('/tmp/large-editor.js').write_text(script)
+          PY
+          node --check /tmp/large-editor.js
+          git diff --check
+          git diff -- large-editor.html
+      - name: Commit patch
+        shell: bash
+        run: |
+          if git diff --quiet -- large-editor.html; then
+            echo 'No change needed'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add large-editor.html
+          git commit -m 'Optimize large editor dirty tracking'
+          git push origin HEAD:main
