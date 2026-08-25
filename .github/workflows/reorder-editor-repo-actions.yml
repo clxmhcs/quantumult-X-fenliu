@@ -1,0 +1,54 @@
+name: Reorder editor repository actions
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/reorder-editor-repo-actions.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Move repository actions above Token section
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('large-editor.html')
+          s=p.read_text()
+          old='<section class="card"><div class="settings"><label>选择仓库<select id="repoSelect"><option value="">正在加载仓库…</option></select></label><label>手动仓库<input id="repo" value="clxmhcs/quantumult-X-fenliu" placeholder="用户名/仓库名或 GitHub URL" spellcheck="false"></label><label>分支<input id="branch" value="" placeholder="留空自动识别" spellcheck="false"></label></div><div class="tokenrow"><label>GitHub Fine-grained Personal Access Token（私有仓库或保存时需要；仅停留在当前页面内存）<input id="token" type="password" placeholder="github_pat_…" autocomplete="off" autocapitalize="none" spellcheck="false"></label><div class="row"><button id="verifyToken" class="btn primary" type="button">验证 Token</button><button id="refreshRepos" class="btn" type="button">刷新仓库</button><button id="read" class="btn primary" type="button">读取规则文件</button><button id="clearToken" class="btn" type="button">清除 Token</button></div></div>'
+          new='<section class="card"><div class="settings"><label>选择仓库<select id="repoSelect"><option value="">正在加载仓库…</option></select></label><label>手动仓库<input id="repo" value="clxmhcs/quantumult-X-fenliu" placeholder="用户名/仓库名或 GitHub URL" spellcheck="false"></label><label>分支<input id="branch" value="" placeholder="留空自动识别" spellcheck="false"></label></div><div class="row" style="padding:0 13px 13px"><button id="refreshRepos" class="btn" type="button">刷新仓库</button><button id="read" class="btn primary" type="button">读取规则文件</button></div><div class="tokenrow"><label>GitHub Fine-grained Personal Access Token（私有仓库或保存时需要；仅停留在当前页面内存）<input id="token" type="password" placeholder="github_pat_…" autocomplete="off" autocapitalize="none" spellcheck="false"></label><div class="row"><button id="verifyToken" class="btn primary" type="button">验证 Token</button><button id="clearToken" class="btn" type="button">清除 Token</button></div></div>'
+          if s.count(old)!=1:
+              raise SystemExit(f'layout anchor count={s.count(old)}')
+          s=s.replace(old,new,1)
+          for marker in ['id="refreshRepos"','id="read"','id="verifyToken"','id="clearToken"']:
+              if s.count(marker)!=1:
+                  raise SystemExit(f'{marker} count={s.count(marker)}')
+          if s.index('id="refreshRepos"') > s.index('id="token"'):
+              raise SystemExit('refreshRepos still below token')
+          if s.index('id="read"') > s.index('id="token"'):
+              raise SystemExit('read still below token')
+          if s.index('id="verifyToken"') < s.index('id="token"'):
+              raise SystemExit('verifyToken unexpectedly above token')
+          p.write_text(s)
+          PY
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, tempfile, subprocess
+          s=Path('large-editor.html').read_text()
+          scripts=re.findall(r'<script>(.*?)</script>',s,re.S)
+          js='\n'.join(scripts)
+          f=tempfile.NamedTemporaryFile('w',suffix='.js',delete=False)
+          f.write(js); f.close()
+          subprocess.run(['node','--check',f.name],check=True)
+          PY
+      - name: Commit layout change
+        run: |
+          if git diff --quiet -- large-editor.html; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add large-editor.html
+          git commit -m "Place repository actions below branch input"
+          git push
