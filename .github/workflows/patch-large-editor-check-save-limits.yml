@@ -1,0 +1,76 @@
+name: Patch large editor check and save limits
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-large-editor-check-save-limits.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch validation cap and current save size
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('large-editor.html')
+          s=p.read_text()
+
+          old='const source=e.editor.value,checkRevision=s.revision,checkRepo=s.repo,checkBranch=s.branch,checkPath=s.path,list=[];let pos=0,lineNo=1,scanned=0;s.checkBusy=true;'
+          new='const source=e.editor.value,checkRevision=s.revision,checkRepo=s.repo,checkBranch=s.branch,checkPath=s.path,list=[];let issueCount=0,pos=0,lineNo=1,scanned=0;const addIssue=(kind,line,message)=>{issueCount++;if(list.length<500)list.push([kind,line,message])};s.checkBusy=true;'
+          if s.count(old)!=1: raise SystemExit(f'check state anchor={s.count(old)}')
+          s=s.replace(old,new,1)
+
+          replacements={
+            'if(!list.length){e.issues.innerHTML=':'if(!issueCount){e.issues.innerHTML=',
+            'e.issues.innerHTML=list.slice(0,500).map(x=>':'e.issues.innerHTML=list.map(x=>',
+            ').join("")+(list.length>500?`<div class="issue">仅显示前 500 项，共 ${list.length} 项。</div>`:"");':').join("")+(issueCount>list.length?`<div class="issue">仅显示前 ${list.length} 项，共 ${issueCount} 项。</div>`:"");',
+            'status(`发现 ${list.length} 个待检查项`,"bad")':'status(`发现 ${issueCount} 个待检查项`,"bad")',
+            'list.push(["warn",lineNo,`未识别类型 ${t||"(空)"}`])':'addIssue("warn",lineNo,`未识别类型 ${t||"(空)"}`)',
+            'list.push(["bad",lineNo,"缺少匹配内容或策略"])':'addIssue("bad",lineNo,"缺少匹配内容或策略")',
+            'list.push(["bad",lineNo,"缺少策略组 / 动作"])':'addIssue("bad",lineNo,"缺少策略组 / 动作")',
+          }
+          for old2,new2 in replacements.items():
+              if s.count(old2)!=1: raise SystemExit(f'anchor {old2[:40]!r} count={s.count(old2)}')
+              s=s.replace(old2,new2,1)
+
+          old_save='if(s.size>90*1024*1024){toast("文件过大，建议使用 GitHub Desktop 或 git 提交");return}\nconst bodySnapshot=text(e.editor.value),snapshotRevision=s.revision,targetRepo=s.repo,targetBranch=s.branch,targetPath=s.path,targetSha=s.sha,targetMode=s.files.find(x=>x.path===s.path)?.mode||"100644",saveHeaders=auth(),jsonHeaders={...saveHeaders,"Content-Type":"application/json"},refPath=targetBranch.split("/").map(encodeURIComponent).join("/");'
+          new_save='const bodySnapshot=text(e.editor.value),bodySize=new Blob([bodySnapshot]).size;if(bodySize>60*1024*1024){toast("当前编辑内容超过 60 MB，建议使用 GitHub Desktop 或 git 提交");return}\nconst snapshotRevision=s.revision,targetRepo=s.repo,targetBranch=s.branch,targetPath=s.path,targetSha=s.sha,targetMode=s.files.find(x=>x.path===s.path)?.mode||"100644",saveHeaders=auth(),jsonHeaders={...saveHeaders,"Content-Type":"application/json"},refPath=targetBranch.split("/").map(encodeURIComponent).join("/");'
+          if s.count(old_save)!=1: raise SystemExit(f'save anchor={s.count(old_save)}')
+          s=s.replace(old_save,new_save,1)
+
+          old_size='s.sha=blob.sha;s.size=new Blob([bodySnapshot]).size;s.original=bodySnapshot;'
+          new_size='s.sha=blob.sha;s.size=bodySize;s.original=bodySnapshot;'
+          if s.count(old_size)!=1: raise SystemExit(f'size anchor={s.count(old_size)}')
+          s=s.replace(old_size,new_size,1)
+
+          p.write_text(s)
+          script=s.split('<script>',1)[1].split('</script>',1)[0]
+          Path('/tmp/large-editor.js').write_text(script)
+          PY
+          node --check /tmp/large-editor.js
+          git diff --check
+          grep -q 'let issueCount=0' large-editor.html
+          grep -q 'list.length<500' large-editor.html
+          grep -q 'issueCount>list.length' large-editor.html
+          grep -q 'bodySize>60\*1024\*1024' large-editor.html
+          ! grep -q 's.size>90\*1024\*1024' large-editor.html
+          ! grep -q 's.size=new Blob' large-editor.html
+          git diff -- large-editor.html
+      - name: Commit patch
+        shell: bash
+        run: |
+          if git diff --quiet -- large-editor.html; then
+            echo 'No changes to commit'
+            exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add large-editor.html
+          git commit -m 'Bound validation memory and check current save size'
+          git push origin HEAD:main
