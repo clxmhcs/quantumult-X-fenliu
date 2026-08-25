@@ -20,25 +20,18 @@ jobs:
           from pathlib import Path
           p=Path('large-editor.html')
           s=p.read_text()
-
           old_known='const known=new Set(["HOST","HOST-SUFFIX","HOST-KEYWORD","HOST-WILDCARD","IP-ASN","IP-CIDR","IP6-CIDR","GEOIP","USER-AGENT","URL-REGEX","PROCESS-NAME","PROCESS-PATH","FINAL","AND","OR","NOT"]),heads=new Set(["HOST","HOST-SUFFIX","HOST-KEYWORD","HOST-WILDCARD","IP-ASN","IP-CIDR","IP6-CIDR","GEOIP","USER-AGENT","TOTAL"]);'
           new_known='const known=new Set(["HOST","HOST-SUFFIX","HOST-KEYWORD","HOST-WILDCARD","DOMAIN","DOMAIN-SUFFIX","DOMAIN-KEYWORD","DOMAIN-WILDCARD","IP-ASN","IP-CIDR","IP6-CIDR","IP-CIDR6","GEOIP","USER-AGENT","URL-REGEX","PROCESS-NAME","PROCESS-PATH","FINAL","AND","OR","NOT"]),heads=new Set(["HOST","HOST-SUFFIX","HOST-KEYWORD","HOST-WILDCARD","IP-ASN","IP-CIDR","IP6-CIDR","GEOIP","USER-AGENT","TOTAL"]);'
           if s.count(old_known)!=1: raise SystemExit(f'known anchor={s.count(old_known)}')
           s=s.replace(old_known,new_known,1)
-
           old_parser='rule=l=>l.trim()&&!l.trimStart().startsWith("#"),parts=l=>l.split(",").map(x=>x.trim());'
-          new_parser=r'''rule=l=>{const t=String(l||"").trimStart();return !!t&&!t.startsWith("#")&&!t.startsWith(";")&&!t.startsWith("//")};
-function splitTopLevel(v){const out=[];let start=0,depth=0,quote="",escaped=false;for(let i=0;i<v.length;i++){const c=v[i];if(escaped){escaped=false;continue}if(c==="\\"){escaped=true;continue}if(quote){if(c===quote)quote="";continue}if(c==='"'||c==="'"){quote=c;continue}if(c==="("||c==="["||c==="{"){depth++;continue}if(c===")"||c==="]"||c==="}"){if(depth>0)depth--;continue}if(c===","&&depth===0){out.push(v.slice(start,i).trim());start=i+1}}out.push(v.slice(start).trim());return out}
-function parts(l){const v=String(l||"").trim(),first=v.indexOf(",");if(first<0)return [v];const type=v.slice(0,first).trim(),upper=type.toUpperCase();if(upper==="URL-REGEX"){const last=v.lastIndexOf(",");if(last===first)return [type,v.slice(first+1).trim()];return [type,v.slice(first+1,last).trim(),v.slice(last+1).trim()]}if(upper==="AND"||upper==="OR"||upper==="NOT")return splitTopLevel(v);return v.split(",").map(x=>x.trim())}
-function statType(t){return t==="DOMAIN"?"HOST":t==="DOMAIN-SUFFIX"?"HOST-SUFFIX":t==="DOMAIN-KEYWORD"?"HOST-KEYWORD":t==="DOMAIN-WILDCARD"?"HOST-WILDCARD":t==="IP-CIDR6"?"IP6-CIDR":t}'''
+          new_parser='rule=l=>{const t=String(l||"").trimStart();return !!t&&!t.startsWith("#")&&!t.startsWith(";")&&!t.startsWith("//")};function splitTopLevel(v){const out=[];let start=0,depth=0,quote="",escaped=false;for(let i=0;i<v.length;i++){const c=v[i];if(escaped){escaped=false;continue}if(c==="\\\\"){escaped=true;continue}if(quote){if(c===quote)quote="";continue}if(c===\'"\'||c==="\'"){quote=c;continue}if(c==="("||c==="["||c==="{"){depth++;continue}if(c===")"||c==="]"||c==="}"){if(depth>0)depth--;continue}if(c===","&&depth===0){out.push(v.slice(start,i).trim());start=i+1}}out.push(v.slice(start).trim());return out}function parts(l){const v=String(l||"").trim(),first=v.indexOf(",");if(first<0)return [v];const type=v.slice(0,first).trim(),upper=type.toUpperCase();if(upper==="URL-REGEX"){const last=v.lastIndexOf(",");if(last===first)return [type,v.slice(first+1).trim()];return [type,v.slice(first+1,last).trim(),v.slice(last+1).trim()]}if(upper==="AND"||upper==="OR"||upper==="NOT")return splitTopLevel(v);return v.split(",").map(x=>x.trim())}function statType(t){return t==="DOMAIN"?"HOST":t==="DOMAIN-SUFFIX"?"HOST-SUFFIX":t==="DOMAIN-KEYWORD"?"HOST-KEYWORD":t==="DOMAIN-WILDCARD"?"HOST-WILDCARD":t==="IP-CIDR6"?"IP6-CIDR":t}'
           if s.count(old_parser)!=1: raise SystemExit(f'parser anchor={s.count(old_parser)}')
           s=s.replace(old_parser,new_parser,1)
-
           old_stat='const t=(parts(l)[0]||"").toUpperCase();c[t]=(c[t]||0)+1;total++'
           new_stat='const t=statType((parts(l)[0]||"").toUpperCase());c[t]=(c[t]||0)+1;total++'
           if s.count(old_stat)!=1: raise SystemExit(f'stat anchor={s.count(old_stat)}')
           s=s.replace(old_stat,new_stat,1)
-
           p.write_text(s)
           script=s.split('<script>',1)[1].split('</script>',1)[0]
           Path('/tmp/large-editor.js').write_text(script)
