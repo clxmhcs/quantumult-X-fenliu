@@ -1,0 +1,9 @@
+# 百度 App 广告拦截 v1 实验重写
+# 作用：
+# 1) 修改 AFD 远程广告控制配置，关闭搜索/Feed/部分开屏广告能力
+# 2) 清理 searchbox splash cmd=2010 中的实时开屏广告与回退标识
+
+^https:\/\/afdconf\.baidu\.com\/afd\/platform(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baiduapp-json-v1.js
+^https:\/\/mbd\.baidu\.com\/searchbox\?(?=.*(?:^|&)action=splash(?:&|$))(?=.*(?:^|&)cmd=2010(?:&|$)).* url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baiduapp-json-v1.js
+
+hostname = afdconf.baidu.com, mbd.baidu.com
