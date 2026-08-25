@@ -1,0 +1,64 @@
+name: Restore large editor tools
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/restore-large-editor-tools.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore legacy editor tools
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('large-editor.html')
+          s=p.read_text()
+          def one(old,new,label):
+              global s
+              if s.count(old)!=1:
+                  raise SystemExit(f'{label}: expected one anchor, got {s.count(old)}')
+              s=s.replace(old,new,1)
+          one('<div class="tokenrow"><label>GitHub Fine-grained Personal Access Token（私有仓库或保存时需要；仅停留在当前页面内存）<input id="token" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false"></label><div class="row"><button id="refreshRepos" class="btn" type="button">刷新仓库</button><button id="read" class="btn primary" type="button">读取规则文件</button><button id="clearToken" class="btn" type="button">清除 Token</button></div></div><div class="row" style="padding:0 13px 13px"><span id="status" class="status"></span></div>','<div class="tokenrow"><label>GitHub Fine-grained Personal Access Token（私有仓库或保存时需要；仅停留在当前页面内存）<input id="token" type="password" placeholder="github_pat_…" autocomplete="off" autocapitalize="none" spellcheck="false"></label><div class="row"><button id="verifyToken" class="btn primary" type="button">验证 Token</button><button id="refreshRepos" class="btn" type="button">刷新仓库</button><button id="read" class="btn primary" type="button">读取规则文件</button><button id="clearToken" class="btn" type="button">清除 Token</button></div></div><div class="row" style="padding:0 13px 7px"><span id="authStatus" class="status">Token 未验证</span><span id="authDetail" class="status">读取公开仓库无需 Token；私有仓库及保存需要相应仓库权限。</span></div><div class="row" style="padding:0 13px 13px"><span id="status" class="status"></span></div>','auth ui')
+          one('<button id="check" class="btn" type="button">校验</button></div>','<button id="check" class="btn" type="button">校验</button><button id="copy" class="btn" type="button">复制全文</button><button id="clear" class="btn" type="button">清空</button><button id="replaceMeta" class="btn" type="button">一键替换</button><button id="open" class="btn" type="button">GitHub查看</button></div>','toolbar')
+          one('<button id="save" class="btn primary" type="button">保存到 GitHub</button>','<button id="save" class="btn primary" type="button" disabled>保存到 GitHub</button>','save disabled')
+          one('clearToken:$("clearToken"),files:','clearToken:$("clearToken"),verifyToken:$("verifyToken"),authStatus:$("authStatus"),authDetail:$("authDetail"),files:','element auth refs')
+          one('check:$("check"),download:','check:$("check"),copy:$("copy"),clear:$("clear"),replaceMeta:$("replaceMeta"),open:$("open"),download:','element tool refs')
+          one('repoBusy:false,saveBusy:false','repoBusy:false,authBusy:false,authLogin:"",authRepo:"",saveBusy:false','auth state')
+          one('function auth(){const h={Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"},token=tokenValue(e.token.value);if(token)h.Authorization=`Bearer ${token}`;return h}','function auth(tokenOverride=null){const h={Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"},token=tokenOverride===null?tokenValue(e.token.value):tokenValue(tokenOverride);if(token)h.Authorization=`Bearer ${token}`;return h}','auth override')
+          anchor='function toast(v){'
+          insert='function setAuthState(kind,title,detail){e.authStatus.textContent=title;e.authStatus.className=`status ${kind||""}`;e.authDetail.textContent=detail}async function verifyToken(){if(s.authBusy)return;const token=tokenValue(e.token.value),target=repo();if(!/^[^/\\s]+\\/[^/\\s]+$/.test(target)){setAuthState("bad","Token 验证失败","仓库格式应为 用户名/仓库名 或完整 GitHub URL");return}if(!token){setAuthState("bad","Token 验证失败","请先输入 Fine-grained Personal Access Token");e.token.focus();return}s.authBusy=true;e.verifyToken.disabled=true;setAuthState("","正在验证 Token…",`正在验证对 ${target} 的读取权限`);try{const info=await json(apiFor(target),{headers:auth(token)});let login=String(info.owner?.login||target.split("/")[0]);try{const user=await json("https://api.github.com/user",{headers:auth(token)});if(user?.login)login=String(user.login)}catch(x){if(Number(x?.status||0)===401)throw x}s.authLogin=login;s.authRepo=String(info.full_name||target);if(!e.branch.value.trim()&&info.default_branch)e.branch.value=String(info.default_branch);setAuthState("ok",`Token 已验证 · ${login}`,`已确认可读取 ${s.authRepo}；实际保存时仍会再次检查目标文件和分支状态`);toast("GitHub Token 验证成功");await loadRepositories()}catch(x){s.authLogin="";s.authRepo="";setAuthState("bad","Token 验证失败",githubErrorLabel(x,true));toast("GitHub Token 验证失败")}finally{s.authBusy=false;e.verifyToken.disabled=false}}function clearToken(){e.token.value="";s.authLogin="";s.authRepo="";setAuthState("","Token 未验证","读取公开仓库无需 Token；私有仓库及保存需要相应仓库权限");toast("Token 已清除");loadRepositories()}'
+          if anchor not in s: raise SystemExit('toast anchor missing')
+          s=s.replace(anchor,insert+anchor,1)
+          anchor='function download(){'
+          insert='function copyAll(){if(!s.path){toast("请先加载一个文件");return}const value=e.editor.value;const fallback=()=>{const a=e.editor.selectionStart,b=e.editor.selectionEnd;e.editor.focus();e.editor.select();let ok=false;try{ok=document.execCommand("copy")}catch{}e.editor.setSelectionRange(a,b);toast(ok?"已复制全文":"复制失败")};if(navigator.clipboard?.writeText)navigator.clipboard.writeText(value).then(()=>toast("已复制全文")).catch(fallback);else fallback()}function clearEditor(){if(!s.path){toast("请先加载一个文件");return}if(!e.editor.value){toast("编辑区已经为空");return}if(!confirm("确定清空当前编辑区？\\n\\n这只会清空当前页面内容，不会立即修改 GitHub。保存后才会提交远程变更。"))return;e.editor.value="";e.issues.innerHTML="";e.issues.className="issues";markDirty();e.editor.focus();e.editor.setSelectionRange(0,0);toast("已清空当前编辑区")}function replaceMeta(){if(!s.path){toast("请先加载一个文件");return}const source=text(e.editor.value);if(!source){toast("编辑区为空，无法替换");return}const author=/^\\s*#\\s*AUTHOR\\s*:.*$/im,repoLine=/^\\s*#\\s*REPO\\s*:.*$/im,hasAuthor=author.test(source),hasRepo=repoLine.test(source),owner=s.repo.split("/")[0];let out=source,n=0;if(hasAuthor){out=out.replace(author,`# AUTHOR: ${owner}`);n++}if(hasRepo){out=out.replace(repoLine,`# REPO: https://github.com/${s.repo}`);n++}if(!n){toast("未找到 AUTHOR: 或 REPO:");return}if(out===source){toast("AUTHOR / REPO 已是当前仓库信息");return}e.editor.value=out;e.issues.innerHTML="";e.issues.className="issues";markDirty();const missing=[];if(!hasAuthor)missing.push("AUTHOR");if(!hasRepo)missing.push("REPO");toast(missing.length?`已替换 ${n} 项；未找到 ${missing.join("、")}`:"已替换 AUTHOR 和 REPO")}function openGitHub(){if(!s.path){toast("请先加载一个文件");return}const ref=s.branch.split("/").map(encodeURIComponent).join("/"),url=`https://github.com/${s.repo}/blob/${ref}/${safe(s.path)}`;window.open(url,"_blank","noopener,noreferrer")}'
+          if anchor not in s: raise SystemExit('download anchor missing')
+          s=s.replace(anchor,insert+anchor,1)
+          one('e.clearToken.onclick=()=>{e.token.value="";toast("Token 已清除")};e.format.onclick=format;','e.verifyToken.onclick=verifyToken;e.token.onkeydown=x=>{if(x.key==="Enter")verifyToken()};e.clearToken.onclick=clearToken;e.format.onclick=format;','auth handlers')
+          one('e.header.onclick=updateHeader;e.check.onclick=check;e.find.onclick=find;','e.header.onclick=updateHeader;e.check.onclick=check;e.copy.onclick=copyAll;e.clear.onclick=clearEditor;e.replaceMeta.onclick=replaceMeta;e.open.onclick=openGitHub;e.find.onclick=find;','tool handlers')
+          p.write_text(s)
+          PY
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('large-editor.html').read_text()
+          start=s.index('<script>')+len('<script>')
+          end=s.index('</script>',start)
+          Path('/tmp/large-editor.js').write_text(s[start:end])
+          required=['id="verifyToken"','id="copy"','id="clear"','id="replaceMeta"','id="open"','function verifyToken()','function copyAll()','function clearEditor()','function replaceMeta()','function openGitHub()','Number(f?.size||0)>1024*1024','function splitTopLevel','issueCount','git/blobs','function clearLoadedView']
+          missing=[x for x in required if x not in s]
+          if missing: raise SystemExit('missing markers: '+', '.join(missing))
+          if s.count('id="copy"')!=1 or s.count('id="clear"')!=1 or s.count('id="replaceMeta"')!=1 or s.count('id="open"')!=1: raise SystemExit('duplicate restored toolbar ids')
+          PY
+          node --check /tmp/large-editor.js
+          git diff --check
+          git diff -- large-editor.html
+      - name: Commit restored tools
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add large-editor.html
+          git commit -m "Restore editor authorization and utility tools"
+          git push
