@@ -1,0 +1,49 @@
+name: Fix disabled button style
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-disabled-button-style.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make disabled buttons visibly disabled
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('large-editor.html')
+          s=p.read_text()
+          old='.btn:hover{border-color:var(--blue);color:var(--blue)}.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}.btn.primary:hover{color:#fff;filter:brightness(.94)}'
+          new='.btn:hover{border-color:var(--blue);color:var(--blue)}.btn:disabled{cursor:not-allowed;opacity:.55;pointer-events:none}.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}.btn.primary:hover{color:#fff;filter:brightness(.94)}.btn.primary:disabled{background:var(--line);border-color:var(--line);color:var(--muted);filter:none}'
+          if s.count(old)!=1:
+              raise SystemExit(f'CSS anchor count={s.count(old)}')
+          s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,tempfile,subprocess
+          s=Path('large-editor.html').read_text()
+          assert '.btn:disabled{cursor:not-allowed;opacity:.55;pointer-events:none}' in s
+          assert '.btn.primary:disabled{background:var(--line);border-color:var(--line);color:var(--muted);filter:none}' in s
+          assert 'function updateSaveButton()' in s
+          assert '!s.dirty' in s and 'token===s.authToken' in s and '!s.sha' in s
+          scripts=re.findall(r'<script>(.*?)</script>',s,re.S)
+          f=tempfile.NamedTemporaryFile('w',suffix='.js',delete=False)
+          f.write('\n'.join(scripts));f.close()
+          subprocess.run(['node','--check',f.name],check=True)
+          print('PASS disabled style and save guard checks')
+          PY
+      - name: Commit disabled button style
+        run: |
+          if git diff --quiet -- large-editor.html; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add large-editor.html
+          git commit -m "Show disabled save button clearly"
+          git push
