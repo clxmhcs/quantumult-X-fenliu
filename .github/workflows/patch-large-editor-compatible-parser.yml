@@ -1,0 +1,82 @@
+name: Patch large editor compatible rule parser
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-large-editor-compatible-parser.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch compatible rule parser
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('large-editor.html')
+          s=p.read_text()
+
+          old_known='const known=new Set(["HOST","HOST-SUFFIX","HOST-KEYWORD","HOST-WILDCARD","IP-ASN","IP-CIDR","IP6-CIDR","GEOIP","USER-AGENT","URL-REGEX","PROCESS-NAME","PROCESS-PATH","FINAL","AND","OR","NOT"]),heads=new Set(["HOST","HOST-SUFFIX","HOST-KEYWORD","HOST-WILDCARD","IP-ASN","IP-CIDR","IP6-CIDR","GEOIP","USER-AGENT","TOTAL"]);'
+          new_known='const known=new Set(["HOST","HOST-SUFFIX","HOST-KEYWORD","HOST-WILDCARD","DOMAIN","DOMAIN-SUFFIX","DOMAIN-KEYWORD","DOMAIN-WILDCARD","IP-ASN","IP-CIDR","IP6-CIDR","IP-CIDR6","GEOIP","USER-AGENT","URL-REGEX","PROCESS-NAME","PROCESS-PATH","FINAL","AND","OR","NOT"]),heads=new Set(["HOST","HOST-SUFFIX","HOST-KEYWORD","HOST-WILDCARD","IP-ASN","IP-CIDR","IP6-CIDR","GEOIP","USER-AGENT","TOTAL"]);'
+          if s.count(old_known)!=1: raise SystemExit(f'known anchor={s.count(old_known)}')
+          s=s.replace(old_known,new_known,1)
+
+          old_parser='rule=l=>l.trim()&&!l.trimStart().startsWith("#"),parts=l=>l.split(",").map(x=>x.trim());'
+          new_parser=r'''rule=l=>{const t=String(l||"").trimStart();return !!t&&!t.startsWith("#")&&!t.startsWith(";")&&!t.startsWith("//")};
+function splitTopLevel(v){const out=[];let start=0,depth=0,quote="",escaped=false;for(let i=0;i<v.length;i++){const c=v[i];if(escaped){escaped=false;continue}if(c==="\\"){escaped=true;continue}if(quote){if(c===quote)quote="";continue}if(c==='"'||c==="'"){quote=c;continue}if(c==="("||c==="["||c==="{"){depth++;continue}if(c===")"||c==="]"||c==="}"){if(depth>0)depth--;continue}if(c===","&&depth===0){out.push(v.slice(start,i).trim());start=i+1}}out.push(v.slice(start).trim());return out}
+function parts(l){const v=String(l||"").trim(),first=v.indexOf(",");if(first<0)return [v];const type=v.slice(0,first).trim(),upper=type.toUpperCase();if(upper==="URL-REGEX"){const last=v.lastIndexOf(",");if(last===first)return [type,v.slice(first+1).trim()];return [type,v.slice(first+1,last).trim(),v.slice(last+1).trim()]}if(upper==="AND"||upper==="OR"||upper==="NOT")return splitTopLevel(v);return v.split(",").map(x=>x.trim())}
+function statType(t){return t==="DOMAIN"?"HOST":t==="DOMAIN-SUFFIX"?"HOST-SUFFIX":t==="DOMAIN-KEYWORD"?"HOST-KEYWORD":t==="DOMAIN-WILDCARD"?"HOST-WILDCARD":t==="IP-CIDR6"?"IP6-CIDR":t}'''
+          if s.count(old_parser)!=1: raise SystemExit(f'parser anchor={s.count(old_parser)}')
+          s=s.replace(old_parser,new_parser,1)
+
+          old_stat='const t=(parts(l)[0]||"").toUpperCase();c[t]=(c[t]||0)+1;total++'
+          new_stat='const t=statType((parts(l)[0]||"").toUpperCase());c[t]=(c[t]||0)+1;total++'
+          if s.count(old_stat)!=1: raise SystemExit(f'stat anchor={s.count(old_stat)}')
+          s=s.replace(old_stat,new_stat,1)
+
+          p.write_text(s)
+          script=s.split('<script>',1)[1].split('</script>',1)[0]
+          Path('/tmp/large-editor.js').write_text(script)
+          PY
+          node --check /tmp/large-editor.js
+          git diff --check
+          node <<'NODE'
+          const fs=require('fs'),vm=require('vm');
+          const html=fs.readFileSync('large-editor.html','utf8');
+          const script=html.split('<script>',2)[1].split('</script>',1)[0];
+          const start=script.indexOf('const known=');
+          const end=script.indexOf('function auth()');
+          if(start<0||end<0)throw new Error('parser slice missing');
+          const src=script.slice(start,end)+';globalThis.__t={known,rule,parts,statType};';
+          const sandbox={};vm.createContext(sandbox);vm.runInContext(src,sandbox);
+          const {known,rule,parts,statType}=sandbox.__t;
+          const eq=(a,b,msg)=>{if(JSON.stringify(a)!==JSON.stringify(b))throw new Error(msg+': '+JSON.stringify(a))};
+          eq(parts('HOST-SUFFIX, example.com , Direct'),['HOST-SUFFIX','example.com','Direct'],'simple');
+          eq(parts('URL-REGEX,^https://x\\.test/a,b,c$,REJECT'),['URL-REGEX','^https://x\\.test/a,b,c$','REJECT'],'url-regex comma');
+          eq(parts('AND,((DOMAIN,example.com),(NETWORK,TCP)),Proxy'),['AND','((DOMAIN,example.com),(NETWORK,TCP))','Proxy'],'AND nesting');
+          eq(parts('NOT,(DOMAIN,example.com),Proxy'),['NOT','(DOMAIN,example.com)','Proxy'],'NOT nesting');
+          if(rule('; comment')||rule('// comment')||rule('# comment')||!rule('DOMAIN-SUFFIX,a.com,REJECT'))throw new Error('comment detection');
+          if(!known.has('DOMAIN-SUFFIX')||!known.has('IP-CIDR6'))throw new Error('dialect aliases');
+          if(statType('DOMAIN-SUFFIX')!=='HOST-SUFFIX'||statType('IP-CIDR6')!=='IP6-CIDR')throw new Error('stat aliases');
+          NODE
+          grep -q 'function splitTopLevel' large-editor.html
+          grep -q 'upper==="URL-REGEX"' large-editor.html
+          grep -q 'statType((parts(l)' large-editor.html
+          git diff -- large-editor.html
+      - name: Commit patch
+        shell: bash
+        run: |
+          if git diff --quiet -- large-editor.html; then
+            echo 'No changes to commit'
+            exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add large-editor.html
+          git commit -m 'Parse mixed rule dialects safely'
+          git push origin HEAD:main
