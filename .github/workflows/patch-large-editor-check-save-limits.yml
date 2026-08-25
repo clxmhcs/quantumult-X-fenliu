@@ -1,4 +1,4 @@
-# retrigger-v5
+# retrigger-v6
 name: Patch large editor check and save limits
 on:
   push:
@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Patch validation cap and current save size
+      - name: Rebuild bounded check and current-size save
         shell: bash
         run: |
           python - <<'PY'
@@ -23,22 +23,50 @@ jobs:
           p=Path('large-editor.html')
           s=p.read_text()
 
-          pattern=r'function check\(\)\{.*?\}(?=function find\(\))'
-          matches=list(re.finditer(pattern,s,re.S))
-          if len(matches)!=1: raise SystemExit(f'check function matches={len(matches)}')
+          check_pattern=r'function check\(\)\{.*?\}(?=function find\(\))'
+          if len(list(re.finditer(check_pattern,s,re.S)))!=1: raise SystemExit('check function match failure')
           new_check=r'''function check(){if(s.checkBusy)return;const source=e.editor.value,checkRevision=s.revision,checkRepo=s.repo,checkBranch=s.branch,checkPath=s.path,list=[];let issueCount=0,pos=0,lineNo=1,scanned=0;const addIssue=(kind,line,message)=>{issueCount++;if(list.length<500)list.push([kind,line,message])};s.checkBusy=true;e.check.disabled=true;status("正在校验…");const done=()=>{s.checkBusy=false;e.check.disabled=false;if(s.repo!==checkRepo||s.branch!==checkBranch||s.path!==checkPath||s.revision!==checkRevision){status("内容已变化，已丢弃过期校验结果","bad");return}if(!issueCount){e.issues.innerHTML='<div class="issue" style="background:color-mix(in srgb,var(--green) 15%,transparent);cursor:default">校验通过：未发现基础格式问题。</div>';e.issues.className="issues show";status("校验通过","ok");return}e.issues.innerHTML=list.map(x=>`<div class="issue ${x[0]==="warn"?"warn":""}" data-line="${x[1]}">第 ${x[1]} 行：${x[2]}</div>`).join("")+(issueCount>list.length?`<div class="issue">仅显示前 ${list.length} 项，共 ${issueCount} 项。</div>`:"");e.issues.className="issues show";e.issues.querySelectorAll("[data-line]").forEach(x=>x.onclick=()=>gotoLine(+x.dataset.line));status(`发现 ${issueCount} 个待检查项`,"bad")};const batch=()=>{const deadline=performance.now()+12;while(pos<=source.length&&performance.now()<deadline){const nl=source.indexOf("\n",pos),end=nl<0?source.length:nl,l=source.slice(pos,end);if(rule(l)){const p=parts(l),t=(p[0]||"").toUpperCase();if(!known.has(t))addIssue("warn",lineNo,`未识别类型 ${t||"(空)"}`);if(p.length<2||!p[1])addIssue("bad",lineNo,"缺少匹配内容或策略");if(t!=="FINAL"&&p.length<3)addIssue("bad",lineNo,"缺少策略组 / 动作")}scanned++;if(nl<0){pos=source.length+1;break}pos=nl+1;lineNo++}if(pos<=source.length){status(`正在校验…已扫描 ${scanned.toLocaleString()} 行`);setTimeout(batch,0)}else done()};setTimeout(batch,0)}'''
-          s=re.sub(pattern,lambda m:new_check,s,count=1,flags=re.S)
+          s=re.sub(check_pattern,lambda m:new_check,s,count=1,flags=re.S)
 
-          guard='if(s.size>90*1024*1024){toast("文件过大，建议使用 GitHub Desktop 或 git 提交");return}'
-          if s.count(guard)!=1: raise SystemExit(f'save guard count={s.count(guard)}')
-          s=s.replace(guard,'',1)
-          prefix='const bodySnapshot=text(e.editor.value),snapshotRevision='
-          replacement='const bodySnapshot=text(e.editor.value),bodySize=new Blob([bodySnapshot]).size;if(bodySize>60*1024*1024){toast("当前编辑内容超过 60 MB，建议使用 GitHub Desktop 或 git 提交");return}\nconst snapshotRevision='
-          if s.count(prefix)!=1: raise SystemExit(f'body snapshot prefix count={s.count(prefix)}')
-          s=s.replace(prefix,replacement,1)
-          old_size='s.size=new Blob([bodySnapshot]).size'
-          if s.count(old_size)!=1: raise SystemExit(f'post-save size count={s.count(old_size)}')
-          s=s.replace(old_size,'s.size=bodySize',1)
+          save_pattern=r'async function save\(\)\{.*?\}\s*(?=const saveWithWriteAccess=save;)'
+          if len(list(re.finditer(save_pattern,s,re.S)))!=1: raise SystemExit('save function match failure')
+          new_save=r'''async function save(){
+if(s.saveBusy)return;
+if(!s.path){toast("请先加载一个文件");return}
+if(targetChanged(false)){status(`保存已阻止：当前加载目标是 ${s.repo}@${s.branch}，请重新读取仓库/分支后再保存`,"bad");toast("仓库或分支已改变，请重新读取后再保存");return}
+if(!e.token.value.trim()){toast("保存需要填写 GitHub Token");e.token.focus();return}
+const bodySnapshot=text(e.editor.value),bodySize=new Blob([bodySnapshot]).size;
+if(bodySize>60*1024*1024){toast("当前编辑内容超过 60 MB，建议使用 GitHub Desktop 或 git 提交");return}
+const snapshotRevision=s.revision,targetRepo=s.repo,targetBranch=s.branch,targetPath=s.path,targetSha=s.sha,targetMode=s.files.find(x=>x.path===s.path)?.mode||"100644",saveHeaders=auth(),jsonHeaders={...saveHeaders,"Content-Type":"application/json"},refPath=targetBranch.split("/").map(encodeURIComponent).join("/");
+s.saveBusy=true;e.save.disabled=true;e.editor.disabled=true;e.repo.disabled=true;e.branch.disabled=true;e.repoSelect.disabled=true;e.read.disabled=true;
+try{
+status(`正在冻结远程分支 ${targetRepo}@${targetBranch}…`);
+const head=await json(apiFor(targetRepo,`git/ref/heads/${refPath}`),{headers:saveHeaders}),headSha=head.object?.sha;
+if(!headSha)throw new Error("无法获取远程分支 HEAD");
+const p=safe(targetPath),latest=await json(apiFor(targetRepo,`contents/${p}?ref=${encodeURIComponent(headSha)}`),{headers:saveHeaders});
+if(latest.sha!==targetSha&&!confirm("远程文件已经变化，是否覆盖远程版本？")){status("已取消保存");return}
+status("正在创建 UTF-8 Blob…");
+const blob=await json(apiFor(targetRepo,"git/blobs"),{method:"POST",headers:jsonHeaders,body:JSON.stringify({content:bodySnapshot,encoding:"utf-8"})});
+if(!blob.sha)throw new Error("GitHub 未返回 Blob SHA");
+status("正在创建提交…");
+const baseCommit=await json(apiFor(targetRepo,`git/commits/${encodeURIComponent(headSha)}`),{headers:saveHeaders}),baseTree=baseCommit.tree?.sha;
+if(!baseTree)throw new Error("无法获取远程基础 Tree");
+const tree=await json(apiFor(targetRepo,"git/trees"),{method:"POST",headers:jsonHeaders,body:JSON.stringify({base_tree:baseTree,tree:[{path:targetPath,mode:targetMode,type:"blob",sha:blob.sha}]})});
+if(!tree.sha)throw new Error("GitHub 未返回 Tree SHA");
+const commit=await json(apiFor(targetRepo,"git/commits"),{method:"POST",headers:jsonHeaders,body:JSON.stringify({message:`编辑 ${targetPath}`,tree:tree.sha,parents:[headSha]})});
+if(!commit.sha)throw new Error("GitHub 未返回 Commit SHA");
+status("正在更新远程分支…");
+await json(apiFor(targetRepo,`git/refs/heads/${refPath}`),{method:"PATCH",headers:jsonHeaders,body:JSON.stringify({sha:commit.sha,force:false})});
+if(s.repo===targetRepo&&s.branch===targetBranch&&s.path===targetPath){s.sha=blob.sha;s.size=bodySize;s.original=bodySnapshot;if(s.revision===snapshotRevision)s.dirty=false}
+refresh();
+status("已保存到 GitHub","ok");
+toast("保存成功；Quantumult X 更新资源后即可获取新规则")
+}catch(err){status(err.message,"bad");toast("保存失败，请检查 Token 权限、分支状态或网络")}
+finally{s.saveBusy=false;e.editor.disabled=false;e.repo.disabled=false;e.branch.disabled=false;e.repoSelect.disabled=false;e.read.disabled=false;targetChanged(false);refresh()}
+}
+
+'''
+          s=re.sub(save_pattern,lambda m:new_save,s,count=1,flags=re.S)
 
           p.write_text(s)
           script=s.split('<script>',1)[1].split('</script>',1)[0]
@@ -50,6 +78,7 @@ jobs:
           grep -q 'list.length<500' large-editor.html
           grep -q 'issueCount>list.length' large-editor.html
           grep -q 'bodySize>60\*1024\*1024' large-editor.html
+          grep -q 's.size=bodySize' large-editor.html
           ! grep -q 's.size>90\*1024\*1024' large-editor.html
           ! grep -q 's.size=new Blob' large-editor.html
           git diff -- large-editor.html
