@@ -1,0 +1,61 @@
+name: Reject stale editor saves
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/reject-stale-save.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject stale saves
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('large-editor.html')
+          s = p.read_text()
+          old = 'if(latest.sha!==targetSha&&!confirm("远程文件已经变化，是否覆盖远程版本？")){setSaveState();status("已取消保存");return}'
+          new = 'if(latest.sha!==targetSha){setSaveState();status("远程文件已更新，请重新读取规则文件后再修改并提交","bad");toast("远程文件已更新，请重新读取规则文件");return}'
+          if old not in s:
+              raise SystemExit('expected stale-save guard not found')
+          if s.count(old) != 1:
+              raise SystemExit(f'expected exactly one stale-save guard, found {s.count(old)}')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path('large-editor.html').read_text()
+          assert '是否覆盖远程版本' not in s
+          assert '远程文件已更新，请重新读取规则文件后再修改并提交' in s
+          assert 'if(latest.sha!==targetSha){' in s
+          PY
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, subprocess, tempfile
+          s = Path('large-editor.html').read_text()
+          m = re.search(r'<script>\s*(.*?)\s*</script>', s, re.S)
+          if not m:
+              raise SystemExit('script block not found')
+          with tempfile.NamedTemporaryFile('w', suffix='.js', delete=False) as f:
+              f.write(m.group(1))
+              name = f.name
+          subprocess.run(['node','--check',name], check=True)
+          PY
+      - name: Commit stale-save rejection
+        shell: bash
+        run: |
+          if git diff --quiet -- large-editor.html; then
+            echo 'No changes'
+            exit 0
+          fi
+          git config user.name 'clxmhcs'
+          git config user.email '109405345+clxmhcs@users.noreply.github.com'
+          git add large-editor.html
+          git commit -m 'Reject stale saves and require reload'
+          git push
