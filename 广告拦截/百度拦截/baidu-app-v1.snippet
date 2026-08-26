@@ -6,11 +6,12 @@
 #    - 响应侧清理实时开屏广告 data.mt / data.ukey / final_backup_realtime_info
 # 3) 精确阻断 search-splash.cdn.bcebos.com 下 splash_*.mp4 开屏素材
 # 4) 持久化记录疑似开屏预取/素材请求；每次 splash 启动自动打印近期候选历史
-# 5) 临时探测 m.baidu.com/s 搜索结果响应中的广告标志（仅记录，不修改正文）
+# 5) 搜索商业卡实验：仅对 leads/getPhone 中 channel=4 + sourceType=2003 + srcid/source=51006 的请求清空响应 data
+# 6) 临时探测 m.baidu.com/s 搜索结果响应中的广告标志（仅记录，不修改正文）
 #
 # 注意：这是 v1 实验版，仅处理已确认结构或低风险候选链路；
 # splash MP4 规则仅匹配 search-splash 专用主机 + splash_*.mp4，不扩大为整个 bcebos.com REJECT。
-# cache probe / search probe 均只记录，不修改正常请求或响应。
+# cache probe / search probe 均只记录；leads 实验只影响 HAR 已确认的商业样本，其他请求原样放行。
 
 ^https:\/\/afdconf\.baidu\.com\/afd\/platform(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-json-v1.js
 ^https?:\/\/mbd\.baidu\.com\/searchbox\?(?=(?:[^&]*&)*action=splash(?:&|$))(?=(?:[^&]*&)*cmd=2010(?:&|$)).* url script-request-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-request-v1.js
@@ -26,6 +27,9 @@
 ^https?:\/\/afd\.baidu\.com\/afd\/entry(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v1.js
 ^https?:\/\/mbd\.baidu\.com\/searchbox\?(?=(?:[^&]*&)*action=(?:preload|launch)(?:&|$)).* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v1.js
 
+# 搜索商业卡最小实验：只清空命中商业身份特征的 virtualPhone 响应 data。
+^https?:\/\/leads\.baidu\.com\/internal\/virtualPhone\/getPhone(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-leads-experiment-v1.js
+
 ^https?:\/\/m\.baidu\.com\/s(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-probe-v1.js
 
-hostname = afdconf.baidu.com, mbd.baidu.com, search-splash.cdn.bcebos.com, ecmb.bdimg.com, *.jomoxc.com, mobads.baidu.com, baichuan.baidu.com, cover.baidu.com, afd.baidu.com, m.baidu.com
+hostname = afdconf.baidu.com, mbd.baidu.com, search-splash.cdn.bcebos.com, ecmb.bdimg.com, *.jomoxc.com, mobads.baidu.com, baichuan.baidu.com, cover.baidu.com, afd.baidu.com, leads.baidu.com, m.baidu.com
