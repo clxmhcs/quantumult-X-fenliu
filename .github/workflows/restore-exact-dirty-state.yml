@@ -1,0 +1,83 @@
+name: Restore exact dirty state
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/restore-exact-dirty-state.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore exact dirty comparison
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('large-editor.html')
+          s=p.read_text()
+          def one(old,new,label):
+              global s
+              n=s.count(old)
+              if n!=1:
+                  raise SystemExit(f'{label}: anchor count={n}')
+              s=s.replace(old,new,1)
+
+          one('dirty:false,revision:0,find:0,lineCountSeq:0,timer:0',
+              'dirty:false,dirtyPending:false,dirtyCheckSeq:0,revision:0,find:0,lineCountSeq:0,timer:0',
+              'dirty state fields')
+
+          one('function updateSaveButton(){const token=tokenValue(e.token.value),verified=!!token&&token===s.authToken&&!!s.authRepo&&s.authRepo.toLowerCase()===s.repo.toLowerCase(),targetMatches=!!s.path&&repo().toLowerCase()===s.repo.toLowerCase()&&e.branch.value.trim()===s.branch;e.save.disabled=!verified||!s.path||!s.sha||!s.dirty||s.saveBusy||s.readOnly||!targetMatches}',
+              'function updateSaveButton(){const token=tokenValue(e.token.value),verified=!!token&&token===s.authToken&&!!s.authRepo&&s.authRepo.toLowerCase()===s.repo.toLowerCase(),targetMatches=!!s.path&&repo().toLowerCase()===s.repo.toLowerCase()&&e.branch.value.trim()===s.branch;e.save.disabled=!verified||!s.path||!s.sha||!s.dirty||s.dirtyPending||s.saveBusy||s.readOnly||!targetMatches}',
+              'save button pending guard')
+
+          one('function markDirty(){s.revision++;s.dirty=true;setSaveState();refresh()}',
+              'function markDirty(){s.revision++;const seq=++s.dirtyCheckSeq,value=e.editor.value;setSaveState();if(value.length!==s.original.length){s.dirty=true;s.dirtyPending=false;refresh();return}s.dirty=true;s.dirtyPending=true;refresh();setTimeout(()=>{if(seq!==s.dirtyCheckSeq||!s.path)return;s.dirty=e.editor.value!==s.original;s.dirtyPending=false;refresh()},120)}',
+              'markDirty exact check')
+
+          one('s.dirty=false;s.revision=0;s.find=0;',
+              's.dirty=false;s.dirtyPending=false;s.dirtyCheckSeq++;s.revision=0;s.find=0;',
+              'clear loaded dirty state')
+
+          one('s.original=value;e.editor.value=value;s.dirty=false;s.revision=0;setSaveState();',
+              's.original=value;e.editor.value=value;s.dirty=false;s.dirtyPending=false;s.dirtyCheckSeq++;s.revision=0;setSaveState();',
+              'load dirty baseline')
+
+          one('s.original=bodySnapshot;if(s.revision===snapshotRevision)s.dirty=false}',
+              's.original=bodySnapshot;s.dirtyPending=false;s.dirtyCheckSeq++;if(s.revision===snapshotRevision)s.dirty=false}',
+              'save dirty baseline')
+
+          p.write_text(s)
+          PY
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,tempfile,subprocess
+          s=Path('large-editor.html').read_text()
+          checks={
+            'pending state':'dirtyPending:false' in s,
+            'sequence state':'dirtyCheckSeq:0' in s,
+            'length fast path':'value.length!==s.original.length' in s,
+            'exact compare':'s.dirty=e.editor.value!==s.original' in s,
+            'debounced exact check':'setTimeout(()=>{if(seq!==s.dirtyCheckSeq||!s.path)return;' in s,
+            'save pending guard':'!s.dirty||s.dirtyPending||s.saveBusy' in s,
+            'load invalidates pending':'s.dirtyPending=false;s.dirtyCheckSeq++;s.revision=0;setSaveState()' in s,
+            'save invalidates pending':'s.original=bodySnapshot;s.dirtyPending=false;s.dirtyCheckSeq++;' in s,
+          }
+          bad=[k for k,v in checks.items() if not v]
+          if bad: raise SystemExit('missing checks: '+', '.join(bad))
+          scripts=re.findall(r'<script>(.*?)</script>',s,re.S)
+          f=tempfile.NamedTemporaryFile('w',suffix='.js',delete=False)
+          f.write('\n'.join(scripts));f.close()
+          subprocess.run(['node','--check',f.name],check=True)
+          print('PASS exact dirty state checks')
+          PY
+      - name: Commit exact dirty state
+        run: |
+          if git diff --quiet -- large-editor.html; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add large-editor.html
+          git commit -m "Disable save again when edits are reverted"
+          git push
