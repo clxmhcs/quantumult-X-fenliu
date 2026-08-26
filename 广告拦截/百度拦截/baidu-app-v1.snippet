@@ -6,12 +6,12 @@
 #    - 响应侧清理实时开屏广告 data.mt / data.ukey / final_backup_realtime_info
 # 3) 精确阻断 search-splash.cdn.bcebos.com 下 splash_*.mp4 开屏素材
 # 4) 持久化记录疑似开屏预取/素材请求；每次 splash 启动自动打印近期候选历史
-# 5) 搜索广告 CSS v1 实验：在 ms.bdstatic.com 搜索 CSS 阶段提前追加广告隐藏规则，避免等待晚加载 JS 后再隐藏
+# 5) 搜索广告 CSS v2 实验：在早期搜索 CSS 中增加百度自身 wiseForceDisplay 使用的 [class^="ec_r_"] 隐藏判据
 #
 # 注意：这是 v1 实验版，仅处理已确认结构或低风险候选链路；
 # splash MP4 规则仅匹配 search-splash 专用主机 + splash_*.mp4，不扩大为整个 bcebos.com REJECT。
-# cache probe v2 仅记录；搜索 CSS v1 不使用 MutationObserver / setTimeout / DOM 扫描。
-# search UI v1/v2、leads v1/v2、m.baidu.com/s probe 文件均保留在仓库，但当前 snippet 已停止调用，避免干扰 CSS 实验结论。
+# cache probe v2 仅记录；搜索 CSS v2 不使用 MutationObserver / setTimeout / DOM 扫描。
+# search UI v1/v2、search CSS v1、leads v1/v2、m.baidu.com/s probe 文件均保留在仓库，但当前 snippet 已停止调用，避免干扰 CSS v2 实验结论。
 
 ^https:\/\/afdconf\.baidu\.com\/afd\/platform(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-json-v1.js
 ^https?:\/\/mbd\.baidu\.com\/searchbox\?(?=(?:[^&]*&)*action=splash(?:&|$))(?=(?:[^&]*&)*cmd=2010(?:&|$)).* url script-request-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-request-v1.js
@@ -27,7 +27,7 @@
 ^https?:\/\/afd\.baidu\.com\/afd\/entry(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v2.js
 ^https?:\/\/mbd\.baidu\.com\/searchbox\?(?=(?:[^&]*&)*action=(?:preload|launch)(?:&|$)).* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v2.js
 
-# 搜索广告 CSS v1：在搜索页早期 CSS 响应末尾追加广告隐藏规则；无运行期 DOM 扫描。
-^https:\/\/ms\.bdstatic\.com\/se\/chat-search\/static\/search-.*\.css url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-css-v1.js
+# 搜索广告 CSS v2：在搜索页早期 CSS 响应末尾追加 [class^="ec_r_"] + 已验证后置选择器；无运行期 DOM 扫描。
+^https:\/\/ms\.bdstatic\.com\/se\/chat-search\/static\/search-.*\.css url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-css-v2.js
 
 hostname = afdconf.baidu.com, mbd.baidu.com, search-splash.cdn.bcebos.com, ecmb.bdimg.com, *.jomoxc.com, mobads.baidu.com, baichuan.baidu.com, cover.baidu.com, afd.baidu.com, ms.bdstatic.com
