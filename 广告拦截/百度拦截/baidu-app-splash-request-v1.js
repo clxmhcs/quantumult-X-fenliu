@@ -2,14 +2,16 @@
 // Quantumult X script-request-body
 // HAR 已确认请求格式：application/x-www-form-urlencoded
 // body: data=<URL 编码后的 JSON>
-// 目标：清空本地开屏广告候选 adinfo.s / adinfo.d，并清空 final_backup_key。
+// 目标：
+// 1) 清空本地开屏广告候选 adinfo.s / adinfo.d，并清空 final_backup_key。
+// 2) 每次 splash 启动时打印持久化探针保存的近期疑似开屏预取记录。
 // 其余启动参数保持不变；解析失败时 fail-open 原样放行。
 
 (() => {
   const originalBody = $request?.body;
-  const url = $request?.url || "";
 
   console.log("baidu-app-splash-request-v1 2026-08-26");
+  dumpSplashCacheHistory();
 
   if (typeof originalBody !== "string" || originalBody.length === 0) {
     console.log("百度App v1 / splash-request: 无文本请求体，原样放行");
@@ -44,6 +46,50 @@
     $done({ body: originalBody });
   }
 })();
+
+function dumpSplashCacheHistory() {
+  const STORE_KEY = "baidu_app_splash_cache_probe_v1";
+  const RETENTION_MS = 6 * 60 * 60 * 1000;
+  const MAX_DUMP = 30;
+  const now = Date.now();
+
+  try {
+    const raw = $prefs.valueForKey(STORE_KEY);
+    if (!raw) {
+      console.log("[splash-cache-history] no-records");
+      return;
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      console.log("[splash-cache-history] invalid-store");
+      return;
+    }
+
+    const recent = parsed
+      .filter(item => item && Number.isFinite(item.ts) && now - item.ts >= 0 && now - item.ts <= RETENTION_MS)
+      .slice(-MAX_DUMP);
+
+    if (recent.length === 0) {
+      console.log("[splash-cache-history] no-recent-records");
+      return;
+    }
+
+    console.log(`[splash-cache-history] begin count=${recent.length} window=6h`);
+    recent.forEach((item, index) => {
+      const ageSeconds = Math.max(0, Math.round((now - item.ts) / 1000));
+      console.log(
+        `[splash-cache-history] #${index + 1} age=${ageSeconds}s ` +
+        `kind=${item.kind || "candidate"} ${item.method || "GET"} ` +
+        `${item.host || ""}${item.path || "/"}` +
+        `${item.queryKeys ? ` ?keys=${item.queryKeys}` : ""}`
+      );
+    });
+    console.log("[splash-cache-history] end");
+  } catch (error) {
+    console.log(`[splash-cache-history] read-error: ${error}`);
+  }
+}
 
 function rewriteFormBody(body) {
   const pairs = body.split("&");
