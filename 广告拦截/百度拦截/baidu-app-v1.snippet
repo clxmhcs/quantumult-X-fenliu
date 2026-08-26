@@ -19,7 +19,7 @@
 ^https?:\/\/search-splash\.cdn\.bcebos\.com\/splash_[^?]*\.mp4(?:\?.*)?$ url reject
 
 # 开屏预缓存/备用链路持久化探针：仅记录 URL 结构，不记录 query 值/Cookie/Token。
-^https?:\/\/ecmb\.bdimg\.com(?::\d+)?\/.*(?:splash|launch|open[_-]?screen|preload|advert|\.mp4)(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v1.js
+^https?:\/\/ecmb\.bdimg\.com(?::\d+)?\/.*(?:splash|launch|open[_-]?screen|preload|advert|\.mp4)(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v1.js
 ^https?:\/\/[^\/]+\.jomoxc\.com(?::\d+)?\/.*(?:splash|launch|open[_-]?screen|preload|advert|\.mp4)(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v1.js
 ^https?:\/\/mobads\.baidu\.com(?::\d+)?\/.*$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v1.js
 ^https?:\/\/baichuan\.baidu\.com\/rs\/adpmobile\/launch(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v1.js
@@ -28,6 +28,6 @@
 ^https?:\/\/mbd\.baidu\.com\/searchbox\?(?=(?:[^&]*&)*action=(?:preload|launch)(?:&|$)).* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v1.js
 
 # 搜索广告 CSS v1：在搜索页早期 CSS 响应末尾追加广告隐藏规则；无运行期 DOM 扫描。
-^https:\/\/ms\.bdstatic\.com\/se\/chat-search\/static\/search-[^?]+\.css(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-css-v1.js
+^https:\/\/ms\.bdstatic\.com\/se\/chat-search\/static\/search-.*\.css url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-css-v1.js
 
 hostname = afdconf.baidu.com, mbd.baidu.com, search-splash.cdn.bcebos.com, ecmb.bdimg.com, *.jomoxc.com, mobads.baidu.com, baichuan.baidu.com, cover.baidu.com, afd.baidu.com, ms.bdstatic.com
