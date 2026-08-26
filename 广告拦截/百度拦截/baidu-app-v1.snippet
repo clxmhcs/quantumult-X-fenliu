@@ -6,13 +6,12 @@
 #    - 响应侧清理实时开屏广告 data.mt / data.ukey / final_backup_realtime_info
 # 3) 精确阻断 search-splash.cdn.bcebos.com 下 splash_*.mp4 开屏素材
 # 4) 持久化记录疑似开屏预取/素材请求；每次 splash 启动自动打印近期候选历史
-# 5) 搜索广告 UI v2 实验：精确修改 wiseSearchHasAd 的强制展示样式，并前置注入一次性 CSS；不再持续扫描 DOM
-# 6) 临时探测 m.baidu.com/s 搜索结果响应中的广告标志（仅记录，不修改正文）
+# 5) 搜索广告 CSS v1 实验：在 ms.bdstatic.com 搜索 CSS 阶段提前追加广告隐藏规则，避免等待晚加载 JS 后再隐藏
 #
 # 注意：这是 v1 实验版，仅处理已确认结构或低风险候选链路；
 # splash MP4 规则仅匹配 search-splash 专用主机 + splash_*.mp4，不扩大为整个 bcebos.com REJECT。
-# cache probe / search probe 均只记录；搜索 UI v2 不使用 MutationObserver / setTimeout / 全页面重复扫描。
-# leads v2 实验文件保留在仓库，但当前 snippet 已停止调用，避免干扰 UI 实验结论。
+# cache probe 仅记录；搜索 CSS v1 不使用 MutationObserver / setTimeout / DOM 扫描。
+# search UI v1/v2、leads v1/v2、m.baidu.com/s probe 文件均保留在仓库，但当前 snippet 已停止调用，避免干扰 CSS 实验结论。
 
 ^https:\/\/afdconf\.baidu\.com\/afd\/platform(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-json-v1.js
 ^https?:\/\/mbd\.baidu\.com\/searchbox\?(?=(?:[^&]*&)*action=splash(?:&|$))(?=(?:[^&]*&)*cmd=2010(?:&|$)).* url script-request-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-request-v1.js
@@ -20,7 +19,7 @@
 ^https?:\/\/search-splash\.cdn\.bcebos\.com\/splash_[^?]*\.mp4(?:\?.*)?$ url reject
 
 # 开屏预缓存/备用链路持久化探针：仅记录 URL 结构，不记录 query 值/Cookie/Token。
-^https?:\/\/ecmb\.bdimg\.com(?::\d+)?\/.*(?:splash|launch|open[_-]?screen|preload|advert|\.mp4)(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v1.js
+^https?:\/\/ecmb\.bdimg\.com(?::\d+)?\/.*(?:splash|launch|open[_-]?screen|preload|advert|\.mp4)(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v1.js
 ^https?:\/\/[^\/]+\.jomoxc\.com(?::\d+)?\/.*(?:splash|launch|open[_-]?screen|preload|advert|\.mp4)(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v1.js
 ^https?:\/\/mobads\.baidu\.com(?::\d+)?\/.*$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v1.js
 ^https?:\/\/baichuan\.baidu\.com\/rs\/adpmobile\/launch(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v1.js
@@ -28,10 +27,7 @@
 ^https?:\/\/afd\.baidu\.com\/afd\/entry(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v1.js
 ^https?:\/\/mbd\.baidu\.com\/searchbox\?(?=(?:[^&]*&)*action=(?:preload|launch)(?:&|$)).* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v1.js
 
-# 搜索广告 UI v2：精确改 wiseForceDisplay，并前置一次性 CSS；无持续 DOM 扫描。
-^https:\/\/nv00\.cdn\.bcebos\.com\/nv01\/static\/ecom\/amd\/wiseSearchHasAd-[^?]+-chunk\.js(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-ui-v2.js
+# 搜索广告 CSS v1：在搜索页早期 CSS 响应末尾追加广告隐藏规则；无运行期 DOM 扫描。
+^https:\/\/ms\.bdstatic\.com\/se\/chat-search\/static\/search-[^?]+\.css(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-css-v1.js
 
-# 旧搜索主页面探针保留作观测；此前测试中通常未命中。
-^https?:\/\/m\.baidu\.com\/s(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-probe-v1.js
-
-hostname = afdconf.baidu.com, mbd.baidu.com, search-splash.cdn.bcebos.com, ecmb.bdimg.com, *.jomoxc.com, mobads.baidu.com, baichuan.baidu.com, cover.baidu.com, afd.baidu.com, nv00.cdn.bcebos.com, m.baidu.com
+hostname = afdconf.baidu.com, mbd.baidu.com, search-splash.cdn.bcebos.com, ecmb.bdimg.com, *.jomoxc.com, mobads.baidu.com, baichuan.baidu.com, cover.baidu.com, afd.baidu.com, ms.bdstatic.com
