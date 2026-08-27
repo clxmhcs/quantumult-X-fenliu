@@ -1,0 +1,76 @@
+name: Add TXT editor support
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/add-txt-editor-support.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add TXT support
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('large-editor.html')
+          s = p.read_text()
+          replacements = [
+              ('<title>Quantumult X 大文件 List 编辑器</title>', '<title>Quantumult X 大文件文本编辑器</title>'),
+              ('<h1>Quantumult X 大文件 List 编辑器</h1><p class="sub">使用 raw 文件地址读取，避免 GitHub Contents API 对大文件不返回正文的问题。</p>', '<h1>Quantumult X 大文件文本编辑器</h1><p class="sub">支持直接读取、编辑并保存 GitHub 仓库中的 .list 与 .txt 文本文件；大文件优先使用 raw 地址读取。</p>'),
+              ('<button id="read" class="btn primary" type="button">读取规则文件</button>', '<button id="read" class="btn primary" type="button">读取文本文件</button>'),
+              ('<aside class="card side"><h2>规则文件</h2><div id="files" class="files"><div class="status">点击“读取规则文件”</div></div>', '<aside class="card side"><h2>文本文件</h2><div id="files" class="files"><div class="status">点击“读取文本文件”</div></div>'),
+              ('<button id="download" class="btn" type="button">下载 .list</button>', '<button id="download" class="btn" type="button">下载文件</button>'),
+              ('<input id="search" placeholder="查找域名、策略或规则" spellcheck="false">', '<input id="search" placeholder="查找文本、域名、策略或规则" spellcheck="false">'),
+              ('e.files.innerHTML=\'<div class="status">未找到 .list 文件</div>\'', 'e.files.innerHTML=\'<div class="status">未找到 .list / .txt 文件</div>\''),
+              ('为避免漏掉 .list 文件，已停止使用不完整结果', '为避免漏掉 .list / .txt 文件，已停止使用不完整结果'),
+              ('x.type==="blob"&&/\\.list$/i.test(x.path)', 'x.type==="blob"&&/\\.(?:list|txt)$/i.test(x.path)'),
+              ('找到 ${s.files.length} 个 .list 文件', '找到 ${s.files.length} 个 .list / .txt 文件'),
+              ('· 未找到 .list 文件', '· 未找到 .list / .txt 文件'),
+              ('远程文件已更新，请重新读取规则文件后再修改并提交', '远程文件已更新，请重新读取文件后再修改并提交'),
+              ('远程文件已更新，请重新读取规则文件', '远程文件已更新，请重新读取文件'),
+              ('toast("保存成功；Quantumult X 更新资源后即可获取新规则")', 'toast("保存成功；远程文件已更新")'),
+              ('const name=s.path?s.path.split("/").pop():"QuantumultX.list"', 'const name=s.path?s.path.split("/").pop():"QuantumultX.txt"'),
+          ]
+          for old, new in replacements:
+              count = s.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected exactly one match for {old!r}, found {count}')
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, subprocess, tempfile
+          s = Path('large-editor.html').read_text()
+          assert '/\\.(?:list|txt)$/i.test(x.path)' in s
+          assert '未找到 .list / .txt 文件' in s
+          assert '找到 ${s.files.length} 个 .list / .txt 文件' in s
+          assert '远程文件已更新，请重新读取文件后再修改并提交' in s
+          assert '远程文件已经变化，是否覆盖远程版本' not in s
+          assert '读取文本文件' in s
+          assert '下载文件' in s
+          m = re.search(r'<script>\s*(.*?)\s*</script>', s, re.S)
+          if not m:
+              raise SystemExit('script block not found')
+          with tempfile.NamedTemporaryFile('w', suffix='.js', delete=False) as f:
+              f.write(m.group(1))
+              name = f.name
+          subprocess.run(['node', '--check', name], check=True)
+          PY
+          git diff --check
+      - name: Commit TXT support
+        shell: bash
+        run: |
+          if git diff --quiet -- large-editor.html; then
+            echo 'No changes'
+            exit 0
+          fi
+          git config user.name 'clxmhcs'
+          git config user.email '109405345+clxmhcs@users.noreply.github.com'
+          git add large-editor.html
+          git commit -m 'Support editing and saving TXT files'
+          git push
