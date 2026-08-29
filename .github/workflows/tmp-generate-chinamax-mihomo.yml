@@ -1,0 +1,140 @@
+name: Temporary Generate ChinaMax Mihomo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tmp-generate-chinamax-mihomo.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Convert Quantumult X ChinaMax to Mihomo
+        shell: python
+        run: |
+          from pathlib import Path
+          from collections import Counter
+
+          src = Path('ChinaMax/ChinaMax.list')
+          dst = Path('ChinaMax/ChinaMax-Mihomo.list')
+
+          mapping = {
+              'HOST': 'DOMAIN',
+              'HOST-SUFFIX': 'DOMAIN-SUFFIX',
+              'HOST-KEYWORD': 'DOMAIN-KEYWORD',
+              'HOST-WILDCARD': 'DOMAIN-WILDCARD',
+              'IP-ASN': 'IP-ASN',
+              'IP-CIDR': 'IP-CIDR',
+              'IP6-CIDR': 'IP-CIDR6',
+          }
+
+          expected = Counter({
+              'HOST': 268,
+              'HOST-KEYWORD': 13,
+              'HOST-SUFFIX': 111335,
+              'HOST-WILDCARD': 1,
+              'IP-ASN': 1,
+              'IP-CIDR': 8190,
+              'IP6-CIDR': 3976,
+              'USER-AGENT': 65,
+          })
+
+          seen = Counter()
+          output = []
+          unsupported = []
+
+          for lineno, raw in enumerate(src.read_text(encoding='utf-8').splitlines(), 1):
+              line = raw.strip()
+              if not line or line.startswith('#'):
+                  continue
+
+              parts = [p.strip() for p in line.split(',')]
+              kind = parts[0].upper()
+              seen[kind] += 1
+
+              if kind == 'USER-AGENT':
+                  unsupported.append((lineno, line))
+                  continue
+
+              if kind not in mapping:
+                  raise SystemExit(f'Unsupported unexpected rule type at line {lineno}: {kind}: {line}')
+
+              if len(parts) < 3:
+                  raise SystemExit(f'Malformed rule at line {lineno}: {line}')
+
+              payload = parts[1]
+              extras = [p for p in parts[3:] if p.lower() == 'no-resolve']
+              converted = f'{mapping[kind]},{payload}'
+              if extras:
+                  converted += ',no-resolve'
+              output.append(converted)
+
+          if seen != expected:
+              raise SystemExit(f'Source count guard failed. expected={dict(expected)} seen={dict(seen)}')
+
+          if sum(seen.values()) != 123849:
+              raise SystemExit(f'Source TOTAL guard failed: {sum(seen.values())}')
+
+          if len(unsupported) != 65:
+              raise SystemExit(f'USER-AGENT omission guard failed: {len(unsupported)}')
+
+          if len(output) != 123784:
+              raise SystemExit(f'Output TOTAL guard failed: {len(output)}')
+
+          header = '''# NAME: ChinaMax
+# AUTHOR: clxmhcs
+# REPO: https://github.com/clxmhcs/quantumult-X-fenliu
+# SOURCE: ChinaMax/ChinaMax.list
+# FORMAT: Mihomo classical rule-provider (text)
+# UPDATED: 2026-08-29
+# DOMAIN: 268
+# DOMAIN-KEYWORD: 13
+# DOMAIN-SUFFIX: 111335
+# DOMAIN-WILDCARD: 1
+# IP-ASN: 1
+# IP-CIDR: 8190
+# IP-CIDR6: 3976
+# OMITTED-UNSUPPORTED-USER-AGENT: 65
+# SOURCE-TOTAL: 123849
+# TOTAL: 123784
+#
+# Mihomo rule-provider settings:
+# behavior: classical
+# format: text
+#
+# Compatibility note:
+# Quantumult X USER-AGENT rules are omitted because Mihomo route rules
+# do not provide an equivalent USER-AGENT matcher. No approximate mapping
+# is used, to avoid changing the semantics of the source list.
+'''
+
+          dst.write_text(header + '\n' + '\n'.join(output) + '\n', encoding='utf-8')
+          print(f'generated={dst}')
+          print(f'source_total={sum(seen.values())}')
+          print(f'output_total={len(output)}')
+          print(f'omitted_user_agent={len(unsupported)}')
+
+      - name: Commit generated rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ChinaMax/ChinaMax-Mihomo.list
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No generated changes.'
+            exit 0
+          fi
+          git commit -m 'feat: add Mihomo ChinaMax rules'
+          git push origin HEAD:main
