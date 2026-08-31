@@ -14,6 +14,10 @@
 # 8) 搜索生命周期诊断：记录 /s 请求开始与 wiseSearchHasAd 请求开始，和 proto 响应完成时间对照，
 #    用来区分“旧/预加载页面首绘”与“Protobuf 流在完整 response rewrite 前已被增量消费”。
 #
+# 临时单变量实验（2026-08-31）：直接 REJECT m.baidu.com/s 主搜索请求。
+# 目的：判断“广告先出现”是否仍可在当前 /s 被完全切断时发生。
+# 测试期间暂停 /s 的 request-start 与 proto response rewrite；其他百度规则不变。
+#
 # 注意：这是 v1 实验版，仅处理已确认结构或低风险候选链路；
 # splash MP4 规则仅匹配 search-splash 专用主机 + splash_*.mp4，不扩大为整个 bcebos.com REJECT。
 # 搜索 Protobuf 清理器采用 fail-open + 等长覆盖，并设置广告块数量/覆盖比例安全阈值。
@@ -33,16 +37,15 @@
 ^https?:\/\/afd\.baidu\.com\/afd\/entry(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v2.js
 ^https?:\/\/mbd\.baidu\.com\/searchbox\?(?=(?:[^&]*&)*action=(?:preload|launch)(?:&|$)).* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v2.js
 
-# 搜索生命周期诊断：仅记录请求时间点，不修改任何请求。
-^https:\/\/m\.baidu\.com\/s\?.* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
-
-# 搜索广告源头：处理主搜索 Protobuf 流，在 SP-engine 首次绘制前清除服务端下发的广告 DOM。
-^https:\/\/m\.baidu\.com\/s\?.* url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-proto.js
+# 临时单变量实验：完全阻断当前 m.baidu.com/s 主搜索请求。
+# 若仍能先显示广告/搜索结果再失败，说明首绘来自 /s 之外的 preload/native 页面；
+# 若搜索直接失败且广告不再出现，则当前 /s 是闪现广告的必要来源，后续转向流式 frame 消费验证。
+^https:\/\/m\.baidu\.com\/s\?.* url reject
 
 # 搜索运行时诊断：页面只产生本地诊断 beacon，QX 打印后直接 204，不向百度上游发送。
 ^https:\/\/m\.baidu\.com\/__qx_baidu_search_diag(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
 
-# ECOM 请求时间点诊断：若该请求早于 proto masked 日志，说明页面已在完整 response rewrite 前开始消费搜索流。
+# ECOM 请求时间点诊断。
 ^https:\/\/nv00\.cdn\.bcebos\.com\/nv01\/static\/ecom\/amd\/wiseSearchHasAd-.*-chunk\.js url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
 
 # 搜索广告最终兜底：wiseSearchHasAd 使用百度原生 t selector / i[] 清理已经进入页面的广告卡。
