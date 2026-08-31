@@ -12,8 +12,9 @@
 # 7) 搜索诊断：wiseSearchHasAd 运行时把 t / ec_wise_ad / ec_r_* / dynamic i[] 数量
 #    发送到同源 __qx_baidu_search_diag；该请求由 QX 本地 204 截获，不转发百度服务器
 # 8) 搜索生命周期诊断：记录 /s 请求开始与 wiseSearchHasAd 请求开始，和 proto 响应完成时间对照
-# 9) 第二搜索入口诊断：在 /s hard reject 条件下，只记录 m/mbd/h2mbd/www.baidu.com 其他 HTTP 路径的
-#    request/response header 元数据；探针已合并到 baidu-app-search.js，不再新增独立临时 JS
+# 9) 第二搜索入口诊断：在 /s hard reject 条件下，记录 m/mbd/h2mbd/www.baidu.com 其他 HTTP 路径的
+#    request/response header 元数据；并针对 mbd/h2mbd.baidu.com/searchbox 额外记录 body 结构元数据
+#    （字段名/长度/控制字段/JSON key/广告结构标志），不记录关键词明文、Cookie、Token。
 #
 # 临时单变量实验（2026-08-31）：直接 REJECT m.baidu.com/s 主搜索请求。
 # 当前结果已确认：/s hard reject 后仍会先出现广告再消失，因此继续保留 hard reject，寻找第二搜索入口。
@@ -40,12 +41,15 @@
 # 已验证 /s 被切断后仍能先出现广告再消失，所以首帧广告不依赖当前 /s。
 ^https:\/\/m\.baidu\.com\/s\?.* url reject
 
-# 第二搜索入口探针：明确排除 /s 与本地诊断 beacon；只记录请求/响应头元数据，不改包。
-# 统一复用已验证可正常更新的 baidu-app-search.js。
+# 第二搜索入口 header 探针：明确排除 /s 与本地诊断 beacon；只记录请求/响应头元数据，不改包。
 ^https:\/\/m\.baidu\.com\/(?!(?:s(?:\?|$)|__qx_baidu_search_diag(?:\?|$))).* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
 ^https:\/\/m\.baidu\.com\/(?!(?:s(?:\?|$)|__qx_baidu_search_diag(?:\?|$))).* url script-response-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
 ^https:\/\/(?:mbd|h2mbd|www)\.baidu\.com\/.* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
 ^https:\/\/(?:mbd|h2mbd|www)\.baidu\.com\/.* url script-response-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
+
+# /searchbox body 探针：只读结构元数据，不改 body；splash cmd=2010 仍由上面的专用规则优先处理。
+^https:\/\/(?:mbd|h2mbd)\.baidu\.com\/searchbox(?:\?.*)?$ url script-request-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
+^https:\/\/(?:mbd|h2mbd)\.baidu\.com\/searchbox(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
 
 # 搜索运行时诊断：页面只产生本地诊断 beacon，QX 打印后直接 204，不向百度上游发送。
 ^https:\/\/m\.baidu\.com\/__qx_baidu_search_diag(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
@@ -56,4 +60,4 @@
 # 搜索广告最终兜底：wiseSearchHasAd 使用百度原生 t selector / i[] 清理已经进入页面的广告卡。
 ^https:\/\/nv00\.cdn\.bcebos\.com\/nv01\/static\/ecom\/amd\/wiseSearchHasAd-.*-chunk\.js url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
 
-hostname = afdconf.baidu.com, mbd.baidu.com, m.baidu.com, search-splash.cdn.bcebos.com, ecmb.bdimg.com, *.jomoxc.com, mobads.baidu.com, baichuan.baidu.com, cover.baidu.com, afd.baidu.com, nv00.cdn.bcebos.com
+hostname = afdconf.baidu.com, mbd.baidu.com, h2mbd.baidu.com, www.baidu.com, m.baidu.com, search-splash.cdn.bcebos.com, ecmb.bdimg.com, *.jomoxc.com, mobads.baidu.com, baichuan.baidu.com, cover.baidu.com, afd.baidu.com, nv00.cdn.bcebos.com
