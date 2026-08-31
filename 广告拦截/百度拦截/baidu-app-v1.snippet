@@ -11,6 +11,8 @@
 # 6) wiseSearchHasAd 只保留为最终兜底，处理未被上游结构覆盖的搜索广告
 # 7) 搜索诊断：wiseSearchHasAd 运行时把 t / ec_wise_ad / ec_r_* / dynamic i[] 数量
 #    发送到同源 __qx_baidu_search_diag；该请求由 QX 本地 204 截获，不转发百度服务器
+# 8) 搜索生命周期诊断：记录 /s 请求开始与 wiseSearchHasAd 请求开始，和 proto 响应完成时间对照，
+#    用来区分“旧/预加载页面首绘”与“Protobuf 流在完整 response rewrite 前已被增量消费”。
 #
 # 注意：这是 v1 实验版，仅处理已确认结构或低风险候选链路；
 # splash MP4 规则仅匹配 search-splash 专用主机 + splash_*.mp4，不扩大为整个 bcebos.com REJECT。
@@ -31,11 +33,17 @@
 ^https?:\/\/afd\.baidu\.com\/afd\/entry(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v2.js
 ^https?:\/\/mbd\.baidu\.com\/searchbox\?(?=(?:[^&]*&)*action=(?:preload|launch)(?:&|$)).* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v2.js
 
+# 搜索生命周期诊断：仅记录请求时间点，不修改任何请求。
+^https:\/\/m\.baidu\.com\/s\?.* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
+
 # 搜索广告源头：处理主搜索 Protobuf 流，在 SP-engine 首次绘制前清除服务端下发的广告 DOM。
 ^https:\/\/m\.baidu\.com\/s\?.* url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-proto.js
 
 # 搜索运行时诊断：页面只产生本地诊断 beacon，QX 打印后直接 204，不向百度上游发送。
 ^https:\/\/m\.baidu\.com\/__qx_baidu_search_diag(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
+
+# ECOM 请求时间点诊断：若该请求早于 proto masked 日志，说明页面已在完整 response rewrite 前开始消费搜索流。
+^https:\/\/nv00\.cdn\.bcebos\.com\/nv01\/static\/ecom\/amd\/wiseSearchHasAd-.*-chunk\.js url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
 
 # 搜索广告最终兜底：wiseSearchHasAd 使用百度原生 t selector / i[] 清理已经进入页面的广告卡。
 ^https:\/\/nv00\.cdn\.bcebos\.com\/nv01\/static\/ecom\/amd\/wiseSearchHasAd-.*-chunk\.js url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
