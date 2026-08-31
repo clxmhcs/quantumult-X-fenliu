@@ -11,20 +11,16 @@
 # 6) wiseSearchHasAd 只保留为最终兜底，处理未被上游结构覆盖的搜索广告
 # 7) 搜索诊断：wiseSearchHasAd 运行时把 t / ec_wise_ad / ec_r_* / dynamic i[] 数量
 #    发送到同源 __qx_baidu_search_diag；该请求由 QX 本地 204 截获，不转发百度服务器
-# 8) 搜索生命周期诊断：记录 /s 请求开始与 wiseSearchHasAd 请求开始，和 proto 响应完成时间对照，
-#    用来区分“旧/预加载页面首绘”与“Protobuf 流在完整 response rewrite 前已被增量消费”。
+# 8) 搜索生命周期诊断：记录 /s 请求开始与 wiseSearchHasAd 请求开始，和 proto 响应完成时间对照
 # 9) 第二搜索入口诊断：在 /s hard reject 条件下，只记录 m/mbd/h2mbd/www.baidu.com 其他 HTTP 路径的
-#    request/response header 元数据，寻找仍能承载搜索首帧/广告的替代入口；不读取响应正文、不记录关键词明文。
+#    request/response header 元数据；探针已合并到 baidu-app-search.js，不再新增独立临时 JS
 #
 # 临时单变量实验（2026-08-31）：直接 REJECT m.baidu.com/s 主搜索请求。
-# 目的：判断“广告先出现”是否仍可在当前 /s 被完全切断时发生。
 # 当前结果已确认：/s hard reject 后仍会先出现广告再消失，因此继续保留 hard reject，寻找第二搜索入口。
-# 测试期间暂停 /s 的 request-start 与 proto response rewrite；其他百度规则不变。
 #
 # 注意：这是 v1 实验版，仅处理已确认结构或低风险候选链路；
 # splash MP4 规则仅匹配 search-splash 专用主机 + splash_*.mp4，不扩大为整个 bcebos.com REJECT。
 # 搜索 Protobuf 清理器采用 fail-open + 等长覆盖，并设置广告块数量/覆盖比例安全阈值。
-# 已实机确认所有 ECOM prepaint 路线仍晚于首帧，因此不再对 bundle/wise_exposure_intersection 注入预隐藏代码。
 
 ^https:\/\/afdconf\.baidu\.com\/afd\/platform(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-json-v1.js
 ^https?:\/\/mbd\.baidu\.com\/searchbox\?(?=(?:[^&]*&)*action=splash(?:&|$))(?=(?:[^&]*&)*cmd=2010(?:&|$)).* url script-request-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-request-v1.js
@@ -45,10 +41,11 @@
 ^https:\/\/m\.baidu\.com\/s\?.* url reject
 
 # 第二搜索入口探针：明确排除 /s 与本地诊断 beacon；只记录请求/响应头元数据，不改包。
-^https:\/\/m\.baidu\.com\/(?!(?:s(?:\?|$)|__qx_baidu_search_diag(?:\?|$))).* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-route-probe-v1.js
-^https:\/\/m\.baidu\.com\/(?!(?:s(?:\?|$)|__qx_baidu_search_diag(?:\?|$))).* url script-response-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-route-probe-v1.js
-^https:\/\/(?:mbd|h2mbd|www)\.baidu\.com\/.* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-route-probe-v1.js
-^https:\/\/(?:mbd|h2mbd|www)\.baidu\.com\/.* url script-response-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-route-probe-v1.js
+# 统一复用已验证可正常更新的 baidu-app-search.js。
+^https:\/\/m\.baidu\.com\/(?!(?:s(?:\?|$)|__qx_baidu_search_diag(?:\?|$))).* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
+^https:\/\/m\.baidu\.com\/(?!(?:s(?:\?|$)|__qx_baidu_search_diag(?:\?|$))).* url script-response-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
+^https:\/\/(?:mbd|h2mbd|www)\.baidu\.com\/.* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
+^https:\/\/(?:mbd|h2mbd|www)\.baidu\.com\/.* url script-response-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
 
 # 搜索运行时诊断：页面只产生本地诊断 beacon，QX 打印后直接 204，不向百度上游发送。
 ^https:\/\/m\.baidu\.com\/__qx_baidu_search_diag(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
