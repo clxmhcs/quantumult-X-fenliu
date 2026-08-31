@@ -1,13 +1,15 @@
 // 百度主 App 搜索广告最终清理 + 运行时/生命周期/第二入口诊断
-// Quantumult X script-response-body / script-request-header / script-response-header
+// Quantumult X script-response-body / script-request-header / script-response-header / script-request-body
 //
 // 目标响应：wiseSearchHasAd-*-chunk.js
 // 诊断请求：m.baidu.com/__qx_baidu_search_diag
 // 第二入口探针：在 m.baidu.com/s hard reject 条件下，仅记录 m/mbd/h2mbd/www.baidu.com 其他路径元数据。
-// 不修改请求/响应，不读取正文，不打印关键词、Cookie、Token。
+// searchbox body 探针：仅记录字段名、长度、控制字段和结构标志；不打印关键词、Cookie、Token。
+// 所有诊断路径均 fail-open，不修改真实请求/响应。
 
 const TAG = "baidu-app-search";
 const ROUTE_TAG = "baidu-app-search-route-probe";
+const SEARCHBOX_TAG = "baidu-app-searchbox-probe";
 const SIGNATURE = "__QX_BAIDU_SEARCH_HANDLER_V2__";
 const DIAG_PATH = "/__qx_baidu_search_diag";
 
@@ -20,6 +22,7 @@ const DYNAMIC_POST_ANCHOR = `$r.forEach(function(i){var o=$i[i];o&&n.i$1(functio
   try {
     const requestUrl = typeof $request !== "undefined" && $request?.url ? String($request.url) : "";
     const hasResponse = typeof $response !== "undefined" && $response != null;
+    const meta = parseUrlMeta(requestUrl);
 
     // 页面运行时诊断由 QX 本地截获并打印，不转发上游。
     if (requestUrl.includes(DIAG_PATH)) {
@@ -52,8 +55,22 @@ const DYNAMIC_POST_ANCHOR = `$r.forEach(function(i){var o=$i[i];o&&n.i$1(functio
       return;
     }
 
-    // 第二搜索入口探针。只记录元数据，明确排除 /s 和本地 beacon。
-    const meta = parseUrlMeta(requestUrl);
+    // /searchbox request-body / response-body 诊断。
+    // 仅在 body 阶段有字符串正文时进入；header 阶段仍由下面的 route probe 记录。
+    if (meta && isSearchboxTarget(meta.host, meta.path)) {
+      if (!hasResponse && typeof $request?.body === "string") {
+        logSearchboxRequestBody(requestUrl, meta, $request.body);
+        $done({});
+        return;
+      }
+      if (hasResponse && typeof $response?.body === "string") {
+        logSearchboxResponseBody(requestUrl, meta, $response.body);
+        $done({});
+        return;
+      }
+    }
+
+    // 第二搜索入口 header 探针。只记录元数据，明确排除 /s 和本地 beacon。
     if (meta && isRouteProbeHost(meta.host) && !(meta.host === "m.baidu.com" && (meta.path === "/s" || meta.path === DIAG_PATH))) {
       logRouteProbe(requestUrl, meta, hasResponse);
       $done({});
@@ -112,15 +129,82 @@ const DYNAMIC_POST_ANCHOR = `$r.forEach(function(i){var o=$i[i];o&&n.i$1(functio
       .replace(DYNAMIC_POST_ANCHOR, dynamicPostPatch);
 
     console.log(
-      `[${TAG}] patched helper=1 force=1 dynamic-pre=1 dynamic-post=1 initial=t dynamic=i role=fallback-final-cleaner diag=local-beacon-v1 lifecycle=v1 route-probe=merged-v1`
+      `[${TAG}] patched helper=1 force=1 dynamic-pre=1 dynamic-post=1 initial=t dynamic=i ` +
+      `role=fallback-final-cleaner diag=local-beacon-v1 lifecycle=v1 route-probe=merged-v1 searchbox-probe=body-v1`
     );
 
     $done({ body });
   } catch (e) {
-    console.log(`[${TAG}] exception=${String(e)} fail-open`);
+    console.log(`[${TAG}] exception=${safeToken(String(e), 160)} fail-open`);
     $done({});
   }
 })();
+
+function logSearchboxRequestBody(url, meta, body) {
+  const headers = $request?.headers || {};
+  const type = safeHeaderValue(getHeader(headers, "content-type"), 64);
+  const pairs = parseFormBody(body);
+  const keys = limitedKeys(pairs.map((x) => x.key));
+  const control = searchboxControls(url, pairs);
+  const flags = formSensitiveFlags(pairs);
+
+  let dataJson = "-";
+  let dataKeys = "-";
+  let nestedFlags = "-";
+  const data = firstFormValue(pairs, "data");
+  if (data.found) {
+    const decoded = safeDecodeFormValue(data.value);
+    const parsed = tryParseJson(decoded);
+    if (parsed.ok) {
+      dataJson = "1";
+      dataKeys = jsonTopKeys(parsed.value);
+      nestedFlags = collectNamedValueLengths(parsed.value, ["word", "query", "oq", "wd", "keyword", "q"], 4);
+    } else {
+      dataJson = "0";
+    }
+  }
+
+  console.log(
+    `[${SEARCHBOX_TAG}] body-v1 req host=${meta.host} bodyLen=${String(body).length} type=${type || "-"} ` +
+    `keys=${keys} action=${control.action} cmd=${control.cmd} service=${control.service} flags=${flags} ` +
+    `dataLen=${data.found ? safeDecodedLength(data.value) : 0} dataJson=${dataJson} dataKeys=${dataKeys} nested=${nestedFlags}`
+  );
+}
+
+function logSearchboxResponseBody(url, meta, body) {
+  const headers = $response?.headers || {};
+  const type = safeHeaderValue(getHeader(headers, "content-type"), 64);
+  const statusCode = safeToken($response?.statusCode ?? $response?.status ?? "-", 24);
+  const parsed = tryParseJson(body);
+  const sample = String(body).slice(0, 1048576);
+  const markers = [
+    `html:${/<(?:html|body|div)\b/i.test(sample) ? 1 : 0}`,
+    `ecWise:${sample.includes("ec_wise_ad") ? 1 : 0}`,
+    `ecR:${sample.includes("ec_r_") ? 1 : 0}`,
+    `cmatch:${sample.includes("data-cmatchid") ? 1 : 0}`,
+    `placeid:${sample.includes("data-placeid") ? 1 : 0}`
+  ].join(",");
+
+  let top = "-";
+  let code = "-";
+  let dataType = "-";
+  let dataKeys = "-";
+  let nestedFlags = "-";
+  if (parsed.ok) {
+    top = jsonTopKeys(parsed.value);
+    code = jsonControlCode(parsed.value);
+    const data = parsed.value && typeof parsed.value === "object" ? parsed.value.data : undefined;
+    dataType = valueType(data);
+    if (data && typeof data === "object" && !Array.isArray(data)) dataKeys = limitedKeys(Object.keys(data));
+    nestedFlags = collectNamedValueLengths(parsed.value, ["word", "query", "oq", "wd", "keyword", "q"], 4);
+  }
+
+  console.log(
+    `[${SEARCHBOX_TAG}] body-v1 resp host=${meta.host} http=${statusCode || "-"} bodyLen=${String(body).length} ` +
+    `type=${type || "-"} json=${parsed.ok ? 1 : 0} top=${top} code=${code} dataType=${dataType} dataKeys=${dataKeys} ` +
+    `markers=${markers} nested=${nestedFlags}`
+  );
+}
 
 function logRouteProbe(url, meta, hasResponse) {
   const flags = queryFlags(url);
@@ -145,6 +229,144 @@ function logRouteProbe(url, meta, hasResponse) {
     `[${ROUTE_TAG}] merged-v1 resp status=${status || "-"} host=${meta.host} path=${safePath(meta.path)} ` +
     `flags=${flags} type=${type || "-"} len=${len} enc=${enc || "-"}`
   );
+}
+
+function isSearchboxTarget(host, path) {
+  return (host === "mbd.baidu.com" || host === "h2mbd.baidu.com") && path === "/searchbox";
+}
+
+function searchboxControls(url, pairs) {
+  return {
+    action: safeControlValue(firstNonEmpty(safeQueryParam(url, "action"), decodedFormValue(pairs, "action"))),
+    cmd: safeControlValue(firstNonEmpty(safeQueryParam(url, "cmd"), decodedFormValue(pairs, "cmd"))),
+    service: safeControlValue(firstNonEmpty(safeQueryParam(url, "service"), decodedFormValue(pairs, "service")))
+  };
+}
+
+function parseFormBody(body) {
+  const out = [];
+  for (const part of String(body || "").split("&")) {
+    if (!part) continue;
+    const eq = part.indexOf("=");
+    const rawKey = eq >= 0 ? part.slice(0, eq) : part;
+    const key = safeDecodeFormValue(rawKey);
+    if (!/^[A-Za-z0-9_.\-]{1,80}$/.test(key)) continue;
+    out.push({ key, value: eq >= 0 ? part.slice(eq + 1) : "" });
+    if (out.length >= 96) break;
+  }
+  return out;
+}
+
+function firstFormValue(pairs, name) {
+  for (const item of pairs || []) {
+    if (item.key === name) return { found: true, value: item.value || "" };
+  }
+  return { found: false, value: "" };
+}
+
+function decodedFormValue(pairs, name) {
+  const item = firstFormValue(pairs, name);
+  return item.found ? safeDecodeFormValue(item.value) : "";
+}
+
+function formSensitiveFlags(pairs) {
+  const names = ["word", "query", "oq", "wd", "keyword", "q", "data"];
+  const out = [];
+  for (const name of names) {
+    const item = firstFormValue(pairs, name);
+    if (item.found) out.push(`${name}:${safeDecodedLength(item.value)}`);
+  }
+  return out.length ? out.join(",") : "-";
+}
+
+function collectNamedValueLengths(root, names, maxDepth) {
+  const wanted = new Set(names);
+  const found = [];
+  const seen = new Set();
+
+  function walk(value, depth) {
+    if (depth > maxDepth || value == null || found.length >= 16) return;
+    if (typeof value !== "object") return;
+    if (seen.has(value)) return;
+    seen.add(value);
+
+    if (Array.isArray(value)) {
+      for (let i = 0; i < value.length && i < 24; i++) walk(value[i], depth + 1);
+      return;
+    }
+
+    for (const key of Object.keys(value).slice(0, 64)) {
+      const child = value[key];
+      if (wanted.has(String(key).toLowerCase())) {
+        const len = typeof child === "string" || typeof child === "number" ? String(child).length : -1;
+        found.push(`${safeToken(key, 24)}:${len}`);
+      }
+      walk(child, depth + 1);
+      if (found.length >= 16) break;
+    }
+  }
+
+  walk(root, 0);
+  return found.length ? found.join(",") : "-";
+}
+
+function tryParseJson(text) {
+  const s = String(text || "").trim();
+  if (!s || (s[0] !== "{" && s[0] !== "[")) return { ok: false, value: null };
+  try {
+    return { ok: true, value: JSON.parse(s) };
+  } catch (_) {
+    return { ok: false, value: null };
+  }
+}
+
+function jsonTopKeys(value) {
+  if (!value || typeof value !== "object") return "-";
+  if (Array.isArray(value)) return `array:${value.length}`;
+  return limitedKeys(Object.keys(value));
+}
+
+function jsonControlCode(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "-";
+  for (const key of ["status", "code", "errno", "errNo", "errorCode"]) {
+    if (Object.prototype.hasOwnProperty.call(value, key)) return safeControlValue(value[key]);
+  }
+  return "-";
+}
+
+function valueType(value) {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return `array:${value.length}`;
+  return typeof value;
+}
+
+function limitedKeys(keys) {
+  const clean = [];
+  for (const key of keys || []) {
+    const s = String(key);
+    if (/^[A-Za-z0-9_.\-]{1,80}$/.test(s)) clean.push(s);
+    if (clean.length >= 24) break;
+  }
+  return clean.length ? clean.join(",") : "-";
+}
+
+function safeDecodeFormValue(value) {
+  try {
+    return decodeURIComponent(String(value || "").replace(/\+/g, "%20"));
+  } catch (_) {
+    return String(value || "");
+  }
+}
+
+function safeControlValue(value) {
+  const s = String(value ?? "");
+  if (!s) return "-";
+  if (/^[A-Za-z0-9_.:\-]{1,48}$/.test(s)) return s;
+  return `len:${s.length}`;
+}
+
+function firstNonEmpty(a, b) {
+  return a || b || "";
 }
 
 function isRouteProbeHost(host) {
