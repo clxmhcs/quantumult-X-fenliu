@@ -6,12 +6,11 @@
 #    - 响应侧清理实时开屏广告 data.mt / data.ukey / final_backup_realtime_info
 # 3) 精确阻断 search-splash.cdn.bcebos.com 下 splash_*.mp4 开屏素材
 # 4) 持久化记录疑似开屏预取/素材请求；每次 splash 启动自动打印近期候选历史
-# 5) 搜索广告双层实验：Prepaint v1 在更早的 ECOM 模块执行入口预隐藏广告，Handler v1 再用百度真实 t selector / i[] 做最终精确清理
+# 5) 搜索广告统一处理：最早可见 bundle 顶层预隐藏 + wiseSearchHasAd 原生 t selector / i[] 最终清理
 #
 # 注意：这是 v1 实验版，仅处理已确认结构或低风险候选链路；
 # splash MP4 规则仅匹配 search-splash 专用主机 + splash_*.mp4，不扩大为整个 bcebos.com REJECT。
-# cache probe v2 仅记录；搜索 Prepaint v1 + Handler v1 均不使用 MutationObserver / setTimeout。
-# search Insert v1/v2/v3、search UI v1/v2、search CSS v1/v2、leads v1/v2、m.baidu.com/s probe 文件均保留在仓库，但当前 snippet 已停止调用。
+# 搜索脚本不使用 MutationObserver / setTimeout，不依赖 leads/sourceType/resultClass 推导。
 
 ^https:\/\/afdconf\.baidu\.com\/afd\/platform(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-json-v1.js
 ^https?:\/\/mbd\.baidu\.com\/searchbox\?(?=(?:[^&]*&)*action=splash(?:&|$))(?=(?:[^&]*&)*cmd=2010(?:&|$)).* url script-request-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-request-v1.js
@@ -27,10 +26,10 @@
 ^https?:\/\/afd\.baidu\.com\/afd\/entry(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v2.js
 ^https?:\/\/mbd\.baidu\.com\/searchbox\?(?=(?:[^&]*&)*action=(?:preload|launch)(?:&|$)).* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v2.js
 
-# 搜索广告 Prepaint v1：更早改写 wise_exposure_intersection，在 AMD factory 执行入口注入已确认广告结构的预隐藏样式，目标是消除 Handler v1 前的首帧闪现。
-^https:\/\/nv00\.cdn\.bcebos\.com\/nv01\/static\/ecom\/amd\/wise_exposure_intersection-.*-chunk\.js url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-prepaint-v1.js
+# 搜索广告：bundle 是当前 HAR 中最早且稳定出现的 m.baidu.com ECOM JS；脚本在 AMD define 前顶层注入预隐藏样式。
+^https:\/\/nv00\.cdn\.bcebos\.com\/nv01\/static\/ecom\/amd\/bundle-.*-chunk\.js url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
 
-# 搜索广告 Handler v1：直接重写 wiseSearchHasAd，使用百度原生 t selector 处理已有广告，并复用其 i[] 处理后续插入广告。
-^https:\/\/nv00\.cdn\.bcebos\.com\/nv01\/static\/ecom\/amd\/wiseSearchHasAd-.*-chunk\.js url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-handler-v1.js
+# 搜索广告：wiseSearchHasAd 继续使用百度原生 t selector / i[] 做最终精确清理。
+^https:\/\/nv00\.cdn\.bcebos\.com\/nv01\/static\/ecom\/amd\/wiseSearchHasAd-.*-chunk\.js url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
 
 hostname = afdconf.baidu.com, mbd.baidu.com, search-splash.cdn.bcebos.com, ecmb.bdimg.com, *.jomoxc.com, mobads.baidu.com, baichuan.baidu.com, cover.baidu.com, afd.baidu.com, nv00.cdn.bcebos.com
