@@ -127,10 +127,13 @@ const MAX_WRAPPER_BYTES = 512 * 1024;
     console.log(
       `[${TAG}] ${VERSION} masked blocks=${normalized.length} wrapperCandidates=${wrapperStarts.length} ` +
       `frames=${parsed.frameCount} htmlChunks=${parsed.segments.length} maskedBytes=${maskedBytes} ` +
-      `htmlBytes=${parsed.htmlLength} lengthPreserved=1 copies=0 strings=0 regex=0`
+      `htmlBytes=${parsed.htmlLength} lengthPreserved=1 fullHtmlCopy=0 responseCopy=0 tagRegex=0`
     );
 
-    $done({ bodyBytes: input.buffer });
+    const bodyBytes = input.byteOffset === 0 && input.byteLength === input.buffer.byteLength
+      ? input.buffer
+      : input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength);
+    $done({ bodyBytes });
   } catch (e) {
     console.log(`[${TAG}] ${VERSION} exception=${String(e)} fail-open`);
     $done({});
