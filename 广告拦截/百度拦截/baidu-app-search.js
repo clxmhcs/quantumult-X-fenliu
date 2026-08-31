@@ -1,11 +1,12 @@
-// 百度主 App 搜索广告最终清理 + 运行时诊断
+// 百度主 App 搜索广告最终清理 + 运行时/生命周期诊断
 // Quantumult X script-response-body / script-request-header
 //
 // 目标响应：wiseSearchHasAd-*-chunk.js
 // 诊断请求：m.baidu.com/__qx_baidu_search_diag
+// 生命周期：记录 m.baidu.com/s 请求开始、wiseSearchHasAd 请求开始，和 proto 响应完成日志对时。
 //
 // 实机已经确认：该处理器能够最终隐藏搜索广告卡，但 ECOM 层无法早于首帧绘制。
-// 因此这里只保留已经验证有效的最终清理，并增加不改变过滤条件的运行时诊断。
+// 因此这里只保留已经验证有效的最终清理，并增加不改变过滤条件的诊断。
 // 诊断 beacon 只发往同源 m.baidu.com/__qx_baidu_search_diag，并由 QX 本地 204 截获，不发送到百度服务器。
 // 不使用 MutationObserver / setTimeout；不依赖 leads/sourceType/resultClass 推导。
 
@@ -20,6 +21,7 @@ const DYNAMIC_POST_ANCHOR = `$r.forEach(function(i){var o=$i[i];o&&n.i$1(functio
 
 (() => {
   const requestUrl = typeof $request !== "undefined" && $request?.url ? $request.url : "";
+  const hasResponse = typeof $response !== "undefined" && $response != null;
 
   // 页面运行时诊断由 QX 本地截获并打印，绝不转发到上游。
   if (requestUrl.includes(DIAG_PATH)) {
@@ -33,6 +35,22 @@ const DYNAMIC_POST_ANCHOR = `$r.forEach(function(i){var o=$i[i];o&&n.i$1(functio
       },
       body: ""
     });
+    return;
+  }
+
+  // 纯请求阶段生命周期日志：不修改请求头/URL/请求体。
+  if (!hasResponse && /^https:\/\/m\.baidu\.com\/s\?/i.test(requestUrl)) {
+    console.log(
+      `[${TAG}] lifecycle search-request-start t_samp=${safeQueryParam(requestUrl, "t_samp") || "-"} ` +
+      `wordLen=${safeDecodedLength(safeQueryParam(requestUrl, "word"))}`
+    );
+    $done({});
+    return;
+  }
+
+  if (!hasResponse && /\/wiseSearchHasAd-[^/?]+-chunk\.js(?:\?|$)/i.test(requestUrl)) {
+    console.log(`[${TAG}] lifecycle wise-request-start`);
+    $done({});
     return;
   }
 
@@ -89,8 +107,29 @@ const DYNAMIC_POST_ANCHOR = `$r.forEach(function(i){var o=$i[i];o&&n.i$1(functio
     .replace(DYNAMIC_POST_ANCHOR, dynamicPostPatch);
 
   console.log(
-    `[${TAG}] patched helper=1 force=1 dynamic-pre=1 dynamic-post=1 initial=t dynamic=i role=fallback-final-cleaner diag=local-beacon-v1`
+    `[${TAG}] patched helper=1 force=1 dynamic-pre=1 dynamic-post=1 initial=t dynamic=i role=fallback-final-cleaner diag=local-beacon-v1 lifecycle=v1`
   );
 
   $done({ body });
 })();
+
+function safeQueryParam(url, name) {
+  const q = url.indexOf("?");
+  if (q < 0) return "";
+  const pairs = url.slice(q + 1).split("&");
+  for (const pair of pairs) {
+    const eq = pair.indexOf("=");
+    const key = eq >= 0 ? pair.slice(0, eq) : pair;
+    if (key === name) return eq >= 0 ? pair.slice(eq + 1, eq + 161) : "";
+  }
+  return "";
+}
+
+function safeDecodedLength(value) {
+  if (!value) return 0;
+  try {
+    return decodeURIComponent(value.replace(/\+/g, "%20")).length;
+  } catch (_) {
+    return value.length;
+  }
+}
