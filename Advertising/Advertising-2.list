@@ -1,7 +1,7 @@
 # NAME: AV
 # AUTHOR: clxmhcs
 # REPO: https://github.com/clxmhcs/quantumult-X-fenliu
-# UPDATED: 2025-06-12 02:06:19
+# UPDATED: 2026-09-02 07:19:00
 # HOST-KEYWORD: e
 # HOST-SUFFIX: 3
 # TOTAL: 3
@@ -48,3 +48,10 @@ DOMAIN-SUFFIX,cnlogs.umeng.com,REJECT
 DOMAIN-SUFFIX,ssp.iytcdn.com,REJECT
 DOMAIN-SUFFIX,domob.cn,REJECT
 URL-REGEX,.*51wnl-cq\.com/wnl-advert.*,REJECT
+
+# ===== 优酷广告 =====
+DOMAIN-SUFFIX,ad-api.adn-plus.com.cn,REJECT
+DOMAIN-SUFFIX,api.qttunion.com,REJECT
+DOMAIN-SUFFIX,service.qttunion.com,REJECT
+DOMAIN-SUFFIX,sdk.1rtb.net,REJECT
+URL-REGEX,^https?://lf-cdn-tos\.bytescm\.com/obj/static/ad/.*,REJECT
