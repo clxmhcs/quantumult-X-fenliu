@@ -15,6 +15,7 @@
 # 9) 第二搜索入口诊断：/searchbox 深挖已完成，cmd=169 已排除为当前广告主体；停止通用 body 深层探针。
 # 10) ECOM 预取/预渲染诊断：定点观察 ldy_ajax_prefetch_flag / imlp_prerender，记录模块请求时间和
 #     运行时 resultClass / 指定商业 data-srcid / ec_wise_ad / ec_r_* 数量，不记录关键词或落地页 URL。
+# 11) 搜索容器诊断：定点读取 m.baidu.com/searchframe 与 /sf 的响应结构，只记录长度与广告结构标志。
 #
 # 临时单变量实验（2026-08-31）：直接 REJECT m.baidu.com/s 主搜索请求。
 # 当前结果已确认：/s hard reject 后仍会先出现广告再消失，因此继续保留 hard reject，寻找预加载/预渲染链。
@@ -41,10 +42,14 @@
 # 已验证 /s 被切断后仍能先出现广告再消失，所以首帧广告不依赖当前 /s。
 ^https:\/\/m\.baidu\.com\/s\?.* url reject
 
-# 第二搜索入口 header 探针：排除 /s、本地诊断 beacon，以及 mbd/h2mbd 的 /searchbox。
-# /searchbox 已完成分析，继续排除以避免无关日志。
-^https:\/\/m\.baidu\.com\/(?!(?:s(?:\?|$)|__qx_baidu_search_diag(?:\?|$))).* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
-^https:\/\/m\.baidu\.com\/(?!(?:s(?:\?|$)|__qx_baidu_search_diag(?:\?|$))).* url script-response-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
+# 搜索容器 /sf 定点诊断：只读请求生命周期与响应结构；不修改 body。
+^https:\/\/m\.baidu\.com\/(?:searchframe|sf)(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-frame-probe-v1.js
+^https:\/\/m\.baidu\.com\/(?:searchframe|sf)(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-frame-probe-v1.js
+
+# 第二搜索入口 header 探针：排除 /s、本地诊断 beacon、searchframe、sf，以及 mbd/h2mbd 的 /searchbox。
+# /searchbox 已完成分析；searchframe/sf 专门交给上面的 body 探针，避免 header/body 重叠。
+^https:\/\/m\.baidu\.com\/(?!(?:s(?:\?|$)|searchframe(?:\?|$)|sf(?:\?|$)|__qx_baidu_search_diag(?:\?|$))).* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
+^https:\/\/m\.baidu\.com\/(?!(?:s(?:\?|$)|searchframe(?:\?|$)|sf(?:\?|$)|__qx_baidu_search_diag(?:\?|$))).* url script-response-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
 ^https:\/\/(?:mbd|h2mbd)\.baidu\.com\/(?!searchbox(?:\?|$)).* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
 ^https:\/\/(?:mbd|h2mbd)\.baidu\.com\/(?!searchbox(?:\?|$)).* url script-response-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
 ^https:\/\/www\.baidu\.com\/.* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
