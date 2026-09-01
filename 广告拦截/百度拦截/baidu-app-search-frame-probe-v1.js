@@ -1,4 +1,4 @@
-// 百度主 App 搜索容器 /sf 定点诊断 v2
+// 百度主 App 搜索容器 /sf 定点诊断 v3
 // Quantumult X script-request-header / script-response-body
 //
 // 目标：
@@ -6,7 +6,8 @@
 // 2) https://m.baidu.com/sf...
 //
 // 只记录请求生命周期、query 字段长度、响应长度与结构计数。
-// v2 额外观察 searchframe 的页面骨架、Native/WebView bridge、DOM 注入与事件机制。
+// v2 观察 searchframe 的页面骨架、Native/WebView bridge、DOM 注入与事件机制。
+// v3 额外分类 searchframe <link> 的 rel / as / href 主机类别，只记录数量，不记录实际 URL。
 // 不记录关键词、Cookie、Token、scheme/脚本 URL 等实际值，不修改请求或响应。
 
 const TAG = "baidu-app-search-frame-probe";
@@ -63,6 +64,7 @@ try {
 
       if (meta.path === "/searchframe") {
         logSearchframeMechanism(sample);
+        logSearchframeLinks(sample);
       }
 
       $done({});
@@ -128,6 +130,101 @@ function logSearchframeMechanism(sample) {
   console.log(`[${TAG}] bridge-v2 bridge=${bridge}`);
   console.log(`[${TAG}] bridge-v2 dom=${dom}`);
   console.log(`[${TAG}] bridge-v2 events=${events}`);
+}
+
+function logSearchframeLinks(sample) {
+  const tags = String(sample || "").match(/<link\b[^>]*>/gi) || [];
+  const rel = {
+    preload: 0,
+    prefetch: 0,
+    modulepreload: 0,
+    stylesheet: 0,
+    preconnect: 0,
+    dnsPrefetch: 0,
+    other: 0,
+    none: 0
+  };
+  const asType = {
+    script: 0,
+    style: 0,
+    fetch: 0,
+    document: 0,
+    image: 0,
+    font: 0,
+    other: 0,
+    none: 0
+  };
+  const hrefHost = {
+    mBaidu: 0,
+    staticBaidu: 0,
+    baiduOther: 0,
+    nonBaidu: 0,
+    relative: 0,
+    missing: 0
+  };
+
+  for (const tag of tags.slice(0, 96)) {
+    const relValue = attrValue(tag, "rel").toLowerCase();
+    const relTokens = relValue ? relValue.split(/\s+/).filter(Boolean) : [];
+    if (!relTokens.length) rel.none++;
+    else {
+      let known = false;
+      for (const token of relTokens) {
+        if (token === "preload") { rel.preload++; known = true; }
+        else if (token === "prefetch") { rel.prefetch++; known = true; }
+        else if (token === "modulepreload") { rel.modulepreload++; known = true; }
+        else if (token === "stylesheet") { rel.stylesheet++; known = true; }
+        else if (token === "preconnect") { rel.preconnect++; known = true; }
+        else if (token === "dns-prefetch") { rel.dnsPrefetch++; known = true; }
+      }
+      if (!known) rel.other++;
+    }
+
+    const asValue = attrValue(tag, "as").toLowerCase();
+    if (!asValue) asType.none++;
+    else if (Object.prototype.hasOwnProperty.call(asType, asValue) && asValue !== "other" && asValue !== "none") asType[asValue]++;
+    else asType.other++;
+
+    const href = attrValue(tag, "href");
+    const bucket = classifyHrefHost(href);
+    hrefHost[bucket]++;
+  }
+
+  console.log(
+    `[${TAG}] links-v3 total=${tags.length} rel=` +
+    `preload:${rel.preload},prefetch:${rel.prefetch},modulepreload:${rel.modulepreload},stylesheet:${rel.stylesheet},` +
+    `preconnect:${rel.preconnect},dnsPrefetch:${rel.dnsPrefetch},other:${rel.other},none:${rel.none}`
+  );
+  console.log(
+    `[${TAG}] links-v3 as=` +
+    `script:${asType.script},style:${asType.style},fetch:${asType.fetch},document:${asType.document},` +
+    `image:${asType.image},font:${asType.font},other:${asType.other},none:${asType.none}`
+  );
+  console.log(
+    `[${TAG}] links-v3 host=` +
+    `mBaidu:${hrefHost.mBaidu},staticBaidu:${hrefHost.staticBaidu},baiduOther:${hrefHost.baiduOther},` +
+    `nonBaidu:${hrefHost.nonBaidu},relative:${hrefHost.relative},missing:${hrefHost.missing}`
+  );
+}
+
+function attrValue(tag, name) {
+  const re = new RegExp(`\\b${name}\\s*=\\s*(["'])(.*?)\\1`, "i");
+  const m = re.exec(String(tag || ""));
+  return m ? String(m[2] || "") : "";
+}
+
+function classifyHrefHost(href) {
+  const value = String(href || "").trim();
+  if (!value) return "missing";
+  if (/^(?:\/|\.|#|\?)/.test(value) && !/^\/\//.test(value)) return "relative";
+
+  const m = /^(?:https?:)?\/\/([^\/:?#]+)/i.exec(value);
+  if (!m) return "relative";
+  const host = String(m[1] || "").toLowerCase();
+  if (host === "m.baidu.com") return "mBaidu";
+  if (/(?:^|\.)(?:bdstatic\.com|bdimg\.com|bcebos\.com|baidustatic\.com)$/.test(host)) return "staticBaidu";
+  if (/(?:^|\.)baidu\.com$/.test(host)) return "baiduOther";
+  return "nonBaidu";
 }
 
 function isTargetPath(path) {
