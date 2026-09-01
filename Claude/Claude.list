@@ -1,0 +1,15 @@
+# NAME: Claude
+# AUTHOR: clxmhcs
+# REPO: https://github.com/clxmhcs/quantumult-X-fenliu
+# UPDATED: 2026-09-01
+# PURPOSE: Claude / Anthropic first-party routing baseline
+# NOTE: Keep this resource before generic Advertising / ChinaMax resources.
+
+# Core consumer Claude domain
+HOST-SUFFIX,claude.ai,Claude
+
+# Anthropic first-party domain and explicitly audited subdomains
+HOST,api.anthropic.com,Claude
+HOST,statsig.anthropic.com,Claude
+HOST,console.anthropic.com,Claude
+HOST-SUFFIX,anthropic.com,Claude
