@@ -1,12 +1,13 @@
-// 百度主 App 搜索容器 /sf 定点诊断 v1
+// 百度主 App 搜索容器 /sf 定点诊断 v2
 // Quantumult X script-request-header / script-response-body
 //
 // 目标：
 // 1) https://m.baidu.com/searchframe...
 // 2) https://m.baidu.com/sf...
 //
-// 只记录请求生命周期、query 字段长度、响应长度与结构标志。
-// 不记录关键词、Cookie、Token，不修改请求或响应。
+// 只记录请求生命周期、query 字段长度、响应长度与结构计数。
+// v2 额外观察 searchframe 的页面骨架、Native/WebView bridge、DOM 注入与事件机制。
+// 不记录关键词、Cookie、Token、scheme/脚本 URL 等实际值，不修改请求或响应。
 
 const TAG = "baidu-app-search-frame-probe";
 
@@ -59,12 +60,74 @@ try {
         `[${TAG}] resp target=${targetName(meta.path)} http=${status || "-"} bodyLen=${body.length} ` +
         `type=${type || "-"} enc=${enc || "-"} flags=${queryFlags(url)} markers=${markers}`
       );
+
+      if (meta.path === "/searchframe") {
+        logSearchframeMechanism(sample);
+      }
+
       $done({});
     }
   }
 } catch (e) {
   console.log(`[${TAG}] exception=${safeToken(String(e), 160)} fail-open`);
   $done({});
+}
+
+function logSearchframeMechanism(sample) {
+  const scriptTags = countRegex(sample, /<script\b/gi);
+  const scriptSrc = countRegex(sample, /<script\b[^>]*\bsrc\s*=\s*["'][^"']+["']/gi);
+  const inlineScript = Math.max(0, scriptTags - scriptSrc);
+
+  const skeleton = [
+    `script:${scriptTags}`,
+    `scriptSrc:${scriptSrc}`,
+    `inline:${inlineScript}`,
+    `iframe:${countRegex(sample, /<iframe\b/gi)}`,
+    `form:${countRegex(sample, /<form\b/gi)}`,
+    `meta:${countRegex(sample, /<meta\b/gi)}`,
+    `link:${countRegex(sample, /<link\b/gi)}`
+  ].join(",");
+
+  const bridge = [
+    `webkitHandlers:${countToken(sample, "webkit.messageHandlers")}`,
+    `postMessage:${countRegex(sample, /\.postMessage\s*\(/g)}`,
+    `jsBridge:${countRegex(sample, /(?:jsbridge|javascriptbridge|webviewjavascriptbridge)/gi)}`,
+    `baiduboxapp:${countToken(sample, "baiduboxapp://")}`,
+    `customScheme:${countRegex(sample, /\b(?!https?:\/\/)[a-z][a-z0-9+.-]{2,20}:\/\//gi)}`,
+    `prompt:${countRegex(sample, /\bprompt\s*\(/g)}`,
+    `invoke:${countRegex(sample, /\binvoke\b/gi)}`,
+    `searchbox:${countRegex(sample, /\bsearchbox\b/gi)}`,
+    `spEngine:${countRegex(sample, /sp[-_ ]?engine/gi)}`,
+    `native:${countRegex(sample, /\bnative\b/gi)}`
+  ].join(",");
+
+  const dom = [
+    `docWrite:${countRegex(sample, /document\.write(?:ln)?\s*\(/g)}`,
+    `innerHTML:${countToken(sample, ".innerHTML")}`,
+    `outerHTML:${countToken(sample, ".outerHTML")}`,
+    `insertHTML:${countToken(sample, "insertAdjacentHTML")}`,
+    `createEl:${countToken(sample, "createElement")}`,
+    `appendChild:${countToken(sample, "appendChild")}`,
+    `replaceChild:${countToken(sample, "replaceChild")}`,
+    `domParser:${countToken(sample, "DOMParser")}`,
+    `eval:${countRegex(sample, /\beval\s*\(/g)}`
+  ].join(",");
+
+  const events = [
+    `addEvent:${countToken(sample, "addEventListener")}`,
+    `messageEvt:${countRegex(sample, /addEventListener\s*\(\s*["']message["']/g)}`,
+    `onmessage:${countRegex(sample, /\bonmessage\b/gi)}`,
+    `dispatch:${countToken(sample, "dispatchEvent")}`,
+    `customEvent:${countToken(sample, "CustomEvent")}`,
+    `domReady:${countToken(sample, "DOMContentLoaded")}`,
+    `readyState:${countToken(sample, "readystatechange")}`,
+    `location:${countRegex(sample, /(?:window\.)?location(?:\.href)?/g)}`
+  ].join(",");
+
+  console.log(`[${TAG}] bridge-v2 skeleton=${skeleton}`);
+  console.log(`[${TAG}] bridge-v2 bridge=${bridge}`);
+  console.log(`[${TAG}] bridge-v2 dom=${dom}`);
+  console.log(`[${TAG}] bridge-v2 events=${events}`);
 }
 
 function isTargetPath(path) {
