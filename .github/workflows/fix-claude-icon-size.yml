@@ -1,0 +1,103 @@
+name: Fix Claude icon size
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-claude-icon-size.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resize Claude icon and keep margins within 3px
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pillow
+          python3 - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          import shutil
+
+          src = Path('proxy-icons/IMG_Claude_v3.png')
+          target = 15 * 1024
+          im = Image.open(src).convert('RGBA')
+          bbox = im.getchannel('A').getbbox()
+          if not bbox:
+              raise SystemExit('Claude icon has no visible pixels')
+
+          crop = im.crop(bbox)
+          w, h = crop.size
+
+          # Make the shorter visible dimension 102 px on a 108 px canvas.
+          # This gives <=3 px transparent margin on every side for this near-square logo.
+          scale = 102.0 / min(w, h)
+          nw = max(1, round(w * scale))
+          nh = max(1, round(h * scale))
+          if nw > 108 or nh > 108:
+              scale = 108.0 / max(w, h)
+              nw = max(1, round(w * scale))
+              nh = max(1, round(h * scale))
+
+          resized = crop.resize((nw, nh), Image.Resampling.LANCZOS)
+          canvas = Image.new('RGBA', (108, 108), (0, 0, 0, 0))
+          x = (108 - nw) // 2
+          y = (108 - nh) // 2
+          canvas.alpha_composite(resized, (x, y))
+
+          candidates = []
+          rgba = Path('/tmp/claude_rgba.png')
+          canvas.save(rgba, format='PNG', optimize=True, compress_level=9)
+          candidates.append(rgba)
+
+          # Keep alternative palette candidates only as fallbacks when RGBA is too large.
+          for colors in (256, 224, 192, 160, 128):
+              p = Path(f'/tmp/claude_{colors}.png')
+              q = canvas.quantize(colors=colors, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.NONE)
+              q.save(p, format='PNG', optimize=True, compress_level=9)
+              candidates.append(p)
+
+          sizes = [(p.stat().st_size, p) for p in candidates]
+          # Prefer a result at or below ~16.5 KiB and closest to 15 KiB.
+          preferred = [(s, p) for s, p in sizes if 12 * 1024 <= s <= 16500]
+          if preferred:
+              size, chosen = min(preferred, key=lambda sp: abs(sp[0] - target))
+          else:
+              size, chosen = min(sizes, key=lambda sp: abs(sp[0] - target))
+
+          shutil.copyfile(chosen, src)
+
+          out = Image.open(src).convert('RGBA')
+          ob = out.getchannel('A').getbbox()
+          l, t, r, b = ob
+          margins = (l, t, 108-r, 108-b)
+          if out.size != (108, 108):
+              raise SystemExit(f'bad canvas size: {out.size}')
+          if max(margins) > 3:
+              raise SystemExit(f'margin exceeds 3px: {margins}')
+
+          print(f'Chosen: {chosen.name}')
+          print(f'Result: PNG {out.width}x{out.height} {src.stat().st_size}B')
+          print(f'Visible bbox: {ob}; margins L/T/R/B={margins}')
+          print(f'All candidates: {[(p.name, s) for s,p in sizes]}')
+          PY
+
+          rm -f .github/workflows/fix-claude-icon-size.yml
+
+      - name: Commit result
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'proxy-icons: resize Claude icon to ~15KB with <=3px margins'
+          git push origin HEAD:main
