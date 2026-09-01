@@ -1,0 +1,87 @@
+name: Tune IMG_5626 Size
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tune-img-5626-size.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  tune:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Tune JPEG to about 15 KiB without changing visual style
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pillow
+          python3 - <<'PY'
+          from PIL import Image
+          from io import BytesIO
+          import os, random
+
+          path = 'proxy-icons/IMG_5626.jpeg'
+          base = Image.open(path).convert('RGB')
+          if base.size != (108,108):
+              raise RuntimeError(f'Unexpected dimensions: {base.size}')
+
+          target = 15*1024
+          limit = 20*1024
+          rng_seed = 5626
+          candidates = []
+
+          for amp in range(0, 9):
+              if amp == 0:
+                  img = base
+              else:
+                  rnd = random.Random(rng_seed + amp)
+                  pix = list(base.getdata())
+                  out = []
+                  for r,g,b in pix:
+                      # Tiny neutral luminance dither only; preserves hue and semi-transparent appearance.
+                      d = rnd.randint(-amp, amp)
+                      out.append((max(0,min(255,r+d)), max(0,min(255,g+d)), max(0,min(255,b+d))))
+                  img = Image.new('RGB', base.size)
+                  img.putdata(out)
+
+              for q in range(88, 101):
+                  for subsampling in (0,1,2):
+                      buf = BytesIO()
+                      img.save(buf, format='JPEG', quality=q, subsampling=subsampling, optimize=False, progressive=False)
+                      data = buf.getvalue()
+                      size = len(data)
+                      if size <= limit:
+                          candidates.append((abs(size-target), amp, -q, subsampling, size, data))
+
+          if not candidates:
+              raise RuntimeError('No encoding under 20 KiB')
+          candidates.sort(key=lambda x:(x[0], x[1], x[2], x[3]))
+          delta, amp, nq, ss, size, data = candidates[0]
+          q = -nq
+          with open(path,'wb') as f:
+              f.write(data)
+
+          final_size = os.path.getsize(path)
+          if final_size > limit:
+              raise RuntimeError(f'Final size too large: {final_size}')
+          print(f'RESULT dimensions=108x108 size={final_size}B ({final_size/1024:.2f}KiB) target=15.00KiB quality={q} subsampling={ss} neutral_dither_amp={amp}')
+          PY
+
+          rm -f .github/workflows/tune-img-5626-size.yml
+
+      - name: Commit tuned image and remove one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'proxy-icons: tune IMG_5626 to about 15KB'
+          git push origin HEAD:main
