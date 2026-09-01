@@ -5,6 +5,7 @@
 // 诊断请求：m.baidu.com/__qx_baidu_search_diag
 // 第二入口探针：在 m.baidu.com/s hard reject 条件下，仅记录 m/mbd/h2mbd/www.baidu.com 其他路径元数据。
 // searchbox body 探针：仅记录字段名、长度、控制字段和结构标志；不打印关键词、Cookie、Token。
+// cmd=169 深层探针：仅输出 data.169 的字段路径、类型、数组长度及商业嫌疑字段名，不输出任何字段值。
 // 所有诊断路径均 fail-open，不修改真实请求/响应。
 
 const TAG = "baidu-app-search";
@@ -56,7 +57,6 @@ const DYNAMIC_POST_ANCHOR = `$r.forEach(function(i){var o=$i[i];o&&n.i$1(functio
     }
 
     // /searchbox request-body / response-body 诊断。
-    // 仅在 body 阶段有字符串正文时进入；header 阶段仍由下面的 route probe 记录。
     if (meta && isSearchboxTarget(meta.host, meta.path)) {
       if (!hasResponse && typeof $request?.body === "string") {
         logSearchboxRequestBody(requestUrl, meta, $request.body);
@@ -130,7 +130,7 @@ const DYNAMIC_POST_ANCHOR = `$r.forEach(function(i){var o=$i[i];o&&n.i$1(functio
 
     console.log(
       `[${TAG}] patched helper=1 force=1 dynamic-pre=1 dynamic-post=1 initial=t dynamic=i ` +
-      `role=fallback-final-cleaner diag=local-beacon-v1 lifecycle=v1 route-probe=merged-v1 searchbox-probe=body-v1`
+      `role=fallback-final-cleaner diag=local-beacon-v1 lifecycle=v1 route-probe=merged-v1 searchbox-probe=body-v1 cmd169-probe=structure-v1`
     );
 
     $done({ body });
@@ -204,6 +204,97 @@ function logSearchboxResponseBody(url, meta, body) {
     `type=${type || "-"} json=${parsed.ok ? 1 : 0} top=${top} code=${code} dataType=${dataType} dataKeys=${dataKeys} ` +
     `markers=${markers} nested=${nestedFlags}`
   );
+
+  const control = searchboxControls(url, []);
+  if (parsed.ok && control.action === "feed" && control.cmd === "169") {
+    logCmd169Structure(meta, parsed.value);
+  }
+}
+
+function logCmd169Structure(meta, root) {
+  const data = root && typeof root === "object" && !Array.isArray(root) ? root.data : undefined;
+  const node = data && typeof data === "object" && !Array.isArray(data) ? data["169"] : undefined;
+  const entries = [];
+  const suspicious = [];
+  const seen = new Set();
+
+  console.log(
+    `[${SEARCHBOX_TAG}] cmd169-v1 root host=${meta.host} data169Type=${valueType(node)} ` +
+    `data169Keys=${node && typeof node === "object" && !Array.isArray(node) ? limitedKeys(Object.keys(node)) : "-"}`
+  );
+
+  walkStructure(node, "data.169", 0, 5, 120, entries, suspicious, seen);
+
+  const chunkSize = 8;
+  const totalChunks = Math.max(1, Math.ceil(entries.length / chunkSize));
+  if (!entries.length) {
+    console.log(`[${SEARCHBOX_TAG}] cmd169-v1 struct 1/1 -`);
+  } else {
+    for (let i = 0; i < entries.length; i += chunkSize) {
+      const n = Math.floor(i / chunkSize) + 1;
+      console.log(
+        `[${SEARCHBOX_TAG}] cmd169-v1 struct ${n}/${totalChunks} ` + entries.slice(i, i + chunkSize).join(";")
+      );
+    }
+  }
+
+  const uniqueSuspicious = Array.from(new Set(suspicious)).slice(0, 48);
+  if (!uniqueSuspicious.length) {
+    console.log(`[${SEARCHBOX_TAG}] cmd169-v1 suspicious=-`);
+  } else {
+    for (let i = 0; i < uniqueSuspicious.length; i += 8) {
+      console.log(
+        `[${SEARCHBOX_TAG}] cmd169-v1 suspicious ${Math.floor(i / 8) + 1}/${Math.ceil(uniqueSuspicious.length / 8)} ` +
+        uniqueSuspicious.slice(i, i + 8).join(";")
+      );
+    }
+  }
+}
+
+function walkStructure(value, path, depth, maxDepth, maxNodes, entries, suspicious, seen) {
+  if (entries.length >= maxNodes || depth > maxDepth) return;
+
+  const type = valueType(value);
+  entries.push(`${safeStructurePath(path)}=${type}`);
+
+  const key = path.split(".").pop().replace(/\[.*$/, "");
+  if (isSuspiciousKey(key)) suspicious.push(`${safeStructurePath(path)}=${type}`);
+
+  if (value == null || typeof value !== "object" || depth >= maxDepth) return;
+  if (seen.has(value)) return;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    if (value.length > 0) walkStructure(value[0], `${path}[0]`, depth + 1, maxDepth, maxNodes, entries, suspicious, seen);
+    return;
+  }
+
+  for (const childKey of Object.keys(value).slice(0, 40)) {
+    if (entries.length >= maxNodes) break;
+    const safeKey = safeStructureKey(childKey);
+    const childPath = `${path}.${safeKey}`;
+    if (isSuspiciousKey(childKey)) suspicious.push(`${safeStructurePath(childPath)}=${valueType(value[childKey])}`);
+    walkStructure(value[childKey], childPath, depth + 1, maxDepth, maxNodes, entries, suspicious, seen);
+  }
+}
+
+function isSuspiciousKey(key) {
+  const raw = String(key || "").toLowerCase();
+  const compact = raw.replace(/[^a-z0-9]/g, "");
+  if (!raw) return false;
+  if (/^(ad|ads|adv|is_ad|ad_info|adinfo|ad_data|addata|ad_list|adlist|ad_type|adtype|ad_id|adid|ec)$/.test(raw)) return true;
+  if (["srcid", "cmatch", "cmatchid", "placeid", "tpl", "material", "creative", "business"].includes(compact)) return true;
+  return /(advert|commercial|marketing|promotion|promote|sponsor|sponsored|material|creative)/.test(compact);
+}
+
+function safeStructureKey(key) {
+  const s = String(key || "");
+  return /^[A-Za-z0-9_\-]{1,64}$/.test(s) ? s : `keyLen${s.length}`;
+}
+
+function safeStructurePath(path) {
+  const s = String(path || "-").replace(/[\r\n\t ;]/g, "_");
+  return s.length <= 180 ? s : `${s.slice(0, 177)}...`;
 }
 
 function logRouteProbe(url, meta, hasResponse) {
