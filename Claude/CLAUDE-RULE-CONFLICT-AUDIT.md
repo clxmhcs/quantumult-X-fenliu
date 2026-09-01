@@ -2,9 +2,9 @@
 
 > 更新时间：2026-09-01
 >
-> 状态：**静态审计阶段；不登录 Claude，不抓账号会话，不修改现有 Quantumult X 生效规则。**
+> 状态：**第三阶段静态审计完成；不登录 Claude，不抓账号会话，不修改现有 Quantumult X 生效规则。**
 >
-> 基线：`Claude/CLAUDE-DOMAIN-BASELINE.md` + 当前 `quantumult_20260831.conf` 配置快照。
+> 基线：`Claude/CLAUDE-DOMAIN-BASELINE.md` + 当前 `quantumult_20260831.conf` 配置快照 + 用户上传的当前 `Advertising.list` / `ChinaMax.list` / `ChinaMax_No_IPv6.list` 原文件。
 
 ## 1. 审计对象
 
@@ -18,112 +18,178 @@ statsig.anthropic.com
 console.anthropic.com
 ```
 
-其中优先级最高的消费者 Claude 核心候选仍为：
+辅助观察域名：
+
+```text
+claude.com
+support.claude.com
+privacy.claude.com
+docs.anthropic.com
+```
+
+## 2. 已检查的当前规则资源
+
+仓库内：
+
+- `Direct/Direct.list`
+- `Advertising/Advertising.list`
+- `Advertising/Advertising-2.list`
+- `ChinaMax/ChinaMax.list`
+- `ChinaMax/ChinaMax_No_IPv6.list`
+- `Google/Google.list`
+- `Apple/Apple.list`
+- `ChatGPT/OpenAI.list`
+
+同时结合当前 `quantumult_20260831.conf` 的启用状态和 `filter_remote` 顺序进行判断。
+
+## 3. 大文件本地原文件复核
+
+GitHub 对超大规则文件的全文搜索存在 `incomplete_results` 和读取限制，因此本阶段改用用户上传的当前原文件完成逐行复核。
+
+文件规模：
+
+```text
+Advertising.list          279423 行 / 11963033 bytes
+ChinaMax.list             123862 行 / 4175943 bytes
+ChinaMax_No_IPv6.list     119886 行 / 4029640 bytes
+```
+
+针对以下候选字符串执行精确检查：
 
 ```text
 claude.ai
 anthropic.com
+api.anthropic.com
+statsig.anthropic.com
+console.anthropic.com
+claude.com
+support.claude.com
+privacy.claude.com
+docs.anthropic.com
 ```
 
-## 2. 当前规则命中审计
+并结合 `HOST` / `HOST-SUFFIX` / `HOST-KEYWORD` / `HOST-WILDCARD` / `IP-CIDR` / `IP6-CIDR` / `IP-ASN` 等规则类型进行复核。
 
-| 规则资源 | 当前策略 | 审计结果 | 结论 |
-|---|---|---|---|
-| `Direct/Direct.list` | `direct` | 已读取完整文件，未发现上述 Claude / Anthropic 第一方候选域名 | **未发现冲突** |
-| `ChatGPT/OpenAI.list` | `Chatgpt` | 已读取完整文件，规则面向 OpenAI 及其相关第三方域名；未发现上述 Claude / Anthropic 第一方候选域名 | **未发现第一方冲突** |
-| `Google/Google.list` | `Google` | 已读取规则；未发现 `anthropic` 第一方匹配 | **未发现第一方冲突** |
-| `Apple/Apple.list` | `direct` | 已读取规则；未发现 `anthropic` 第一方匹配 | **未发现第一方冲突** |
-| `Advertising/Advertising-2.list` | `reject` | 已读取完整文件；当前内容为天气、百度贴吧、日历等自建广告规则，未发现 Claude / Anthropic 第一方候选域名 | **未发现冲突** |
-| `Advertising/Advertising.list` | `reject` | 文件约 11.96 MB；GitHub 连接器无法完整读取，代码搜索返回 `incomplete_results=true` | **未完成，不能宣告无冲突** |
-| `ChinaMax/ChinaMax.list` | `direct` | 文件约 4.18 MB；GitHub 连接器无法完整读取，代码搜索返回 `incomplete_results=true` | **未完成，不能宣告无冲突** |
-| `ChinaMax/ChinaMax_No_IPv6.list` | `direct` | 文件约 4.03 MB；同属超大规则文件，当前连接器无法完成逐条验证 | **未完成，不能宣告无冲突** |
+## 4. 关键发现
 
-## 3. GitHub 代码搜索限制
+### 4.1 已确认冲突：`statsig.anthropic.com`
 
-针对 `claude.ai` / `anthropic` 的仓库代码搜索曾返回 0 条结果，但同时返回：
+当前 `Advertising/Advertising.list` 第 272100 行存在：
 
 ```text
-incomplete_results = true
+HOST-SUFFIX,statsig.anthropic.com,Advertising
 ```
 
-并且新建的 Claude 基线文件也未被搜索稳定检出。因此：
+而当前 Quantumult X 配置对该远程资源使用：
 
-> **GitHub 当前代码搜索不能作为“超大规则文件不存在某域名”的最终证明。**
+```ini
+force-policy=reject
+enabled=true
+```
 
-对 `Advertising.list`、`ChinaMax.list`、`ChinaMax_No_IPv6.list` 必须保留“未完全验证”状态，不能根据 0 条搜索结果直接标记 PASS。
-
-上一版审计曾把 `statsig.anthropic.com` 在 `Advertising.list` 中的命中写成“已确认”，并把 `ChinaMax_No_IPv6.list` 写成“空文件”。当前复核不能支持这两个结论：前者受超大文件读取/索引限制尚未独立验证；后者当前仓库元数据显示文件约 4.03 MB。因此本版撤回这两个未经充分证据支持的结论。
-
-## 4. 当前 Quantumult X 的暂定命中路径
-
-根据当前 `quantumult_20260831.conf` 的启用顺序，如果 Claude 第一方域名没有隐藏在尚未完成审计的超大规则文件中，也没有被其他更早规则命中，则当前会继续落到：
+因此在没有更高优先级修正规则时：
 
 ```text
-Claude 第一方请求
-    ↓
-现有远程规则均未命中
-    ↓
+statsig.anthropic.com
+        ↓
+Advertising.list
+        ↓
+REJECT
+```
+
+这是本轮唯一已经确认的 Claude / Anthropic 第一方候选域名冲突。
+
+### 4.2 `ChinaMax.list`
+
+上传的当前原文件中未发现上述 Claude / Anthropic 候选域名直接命中。
+
+### 4.3 `ChinaMax_No_IPv6.list`
+
+上传的当前原文件中未发现上述 Claude / Anthropic 候选域名直接命中。
+
+### 4.4 `Advertising-2.list`
+
+已读取完整文件，当前内容主要为天气、百度贴吧、日历等自建广告规则，未发现 Claude / Anthropic 第一方候选域名。
+
+### 4.5 `Direct.list`
+
+已读取完整文件，未发现 Claude / Anthropic 第一方候选域名，因此当前不存在这些第一方域名被本仓库 Direct 白名单直接接管的证据。
+
+### 4.6 Google / Apple / OpenAI
+
+已检查的当前仓库规则中未发现 Claude / Anthropic 第一方候选域名本身。
+
+如果用户主动选择 Google 登录，Google 认证链本身仍属于 Google 流量；这不等于 Claude 第一方域名被 Google 规则误命中，也不应因此把整个 Google 域名体系归入 Claude。
+
+## 5. 当前候选域名命中矩阵
+
+| 域名 | Direct | Advertising | Advertising-2 | ChinaMax | Google | Apple | OpenAI | 当前静态判断 |
+|---|---|---|---|---|---|---|---|---|
+| `claude.ai` | 无 | 无已确认命中 | 无 | 无 | 无 | 无 | 无 | 未有专用规则时进入后续规则 / Final |
+| `anthropic.com` | 无 | 无已确认命中 | 无 | 无 | 无 | 无 | 无 | 未有专用规则时进入后续规则 / Final |
+| `api.anthropic.com` | 无 | 无已确认命中 | 无 | 无 | 无 | 无 | 无 | 未有专用规则时进入后续规则 / Final |
+| `statsig.anthropic.com` | 无 | **命中** | 无 | 无 | 无 | 无 | 无 | **当前会被 Advertising 资源 REJECT，必须修正** |
+| `console.anthropic.com` | 无 | 无已确认命中 | 无 | 无 | 无 | 无 | 无 | 未有专用规则时进入后续规则 / Final |
+
+## 6. 当前 Final 路径问题
+
+现有配置没有 `Claude` 专用策略组，也没有 Claude 专用远程分流。
+
+当前本地兜底为：
+
+```ini
 final, 黑白名单
-    ↓
-黑白名单
-    ↓
-【港·日】节点
-    ↓
-url-latency-benchmark 自动测速组
 ```
 
-因此现阶段仍不能把当前配置视为 Claude 的确定性路由环境。
-
-## 5. 已确认不存在的问题
-
-截至本阶段，已有证据支持：
-
-- `Direct.list` 没有把 Claude 第一方候选域名强制 `direct`。
-- `Advertising-2.list` 没有把 Claude 第一方候选域名 `reject`。
-- `OpenAI.list` 没有把 Claude 第一方候选域名误归入 ChatGPT。
-- Google / Apple 规则没有直接包含 Anthropic 第一方候选域名。
-- 当前配置未把 `claude.ai` / `anthropic.com` 加入 MITM hostname。
-- 当前没有 Claude 专用 Rewrite。
-
-## 6. 尚未关闭的风险
-
-当前仅剩两个主要静态风险面：
-
-1. **超大通用规则文件未知命中**
-   - `Advertising.list`
-   - `ChinaMax.list`
-   - `ChinaMax_No_IPv6.list`
-
-2. **无 Claude 专用前置规则时的兜底不确定性**
-   - 未命中的 Claude 请求进入 `final → 黑白名单 → 【港·日】节点`；
-   - `【港·日】节点` 是自动测速组，不属于固定 Claude 专用路径。
-
-## 7. 下一阶段设计原则
-
-在不依赖超大通用规则文件是否包含 Claude 域名的情况下，下一阶段应通过**更高优先级的 Claude 专用规则**建立确定性路由边界：
+而 `黑白名单` 指向：
 
 ```text
-Claude 专用规则
-    ↓
-Claude 专用 policy
-    ↓
-再进入 Advertising / ChinaMax / 其他通用规则
+【港·日】节点
 ```
 
-这样可以从架构上避免 Claude 第一方域名被后面的通用广告、国内站点或最终兜底规则接管。
+该组是 `url-latency-benchmark` 自动测速组。
 
-但下一阶段仍遵守以下限制：
+因此，对没有被其他规则提前命中的 Claude 第一方域名，当前结构不能保证长期由一个固定出口处理。
 
-- 不把整个 Google / Apple / Cloudflare 域名体系绑定到 Claude。
-- 不修改 Claude 请求头、定位信息、GEOIP 或账号数据。
-- 不给 Claude 加 MITM / Rewrite。
-- 不使用自动测速、负载均衡作为 Claude 专用 policy 的内部自动切换逻辑。
-- 本文件只讨论稳定、一致、可审计的网络分流，不讨论伪造地区或规避服务访问限制。
+这里的结论只针对网络路径稳定性与配置确定性，不涉及规避任何服务商地区限制或风控。
 
-## 8. 阶段结论
+## 7. Quantumult X 规则顺序注意事项
 
-第三步结论：**PARTIAL PASS**。
+Quantumult X 远程分流资源需要关注资源先后顺序；修正规则通常应放在广告拦截规则之前。
 
-已确认的小型/中型规则没有 Claude 第一方冲突；三个超大通用规则文件受 GitHub 连接器和代码搜索限制，暂不能完成逐条排除。因此不能写成“所有现有规则均无冲突”。
+同时，Quantumult X 的“分流匹配优化”可能按规则类型优先级影响匹配结果，因此后续 Claude 修正规则应使用与冲突规则同等或更高精度的域名规则，避免依赖宽泛 `HOST-KEYWORD`。
 
-下一步进入 Claude 专用 policy / list 的结构设计，使第一方 Claude 域名在规则优先级上先于通用 Advertising / ChinaMax / final，从架构层面消除当前最大的路由不确定性。
+本项目后续优先采用：
+
+```text
+HOST-SUFFIX / HOST
+```
+
+而不是宽泛关键词规则。
+
+## 8. 第三阶段结论
+
+第三步静态冲突审计：**PASS with 1 confirmed conflict**。
+
+唯一已确认必须处理的问题：
+
+```text
+statsig.anthropic.com
+→ Advertising.list
+→ REJECT
+```
+
+其余第一版 Claude / Anthropic 第一方候选域名目前没有在已检查的 Direct / Advertising-2 / ChinaMax / Google / Apple / OpenAI 资源中发现冲突。
+
+此前因 GitHub 超大文件读取限制而保留的 `PARTIAL PASS` 状态，现已通过用户上传的三份当前原文件完成补充验证，可以关闭。
+
+## 9. 下一阶段
+
+第四阶段只做“Claude 专用分流设计”，仍不要求登录 Claude：
+
+1. 新建 `Claude/Claude.list`。
+2. 仅纳入有官方证据支持的第一方域名，不批量加入 Google / Cloudflare / Stripe / Intercom 等第三方域名。
+3. Claude 远程资源放在 Advertising 资源之前，以修正 `statsig.anthropic.com` 的误杀。
+4. 新建独立 `Claude` policy，目标是固定、可预测的网络路径；不使用自动测速组作为 Claude 会话的直接策略。
+5. 不给 Claude / Anthropic 域名增加 MITM、Rewrite、请求头改写或 GEOIP/定位伪造。
+6. 完成静态验收后才进入任何实机验证。
