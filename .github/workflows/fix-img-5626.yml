@@ -1,0 +1,64 @@
+name: Fix IMG_5626 icon
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-img-5626.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reframe IMG_5626 with 2-5px margin
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v convert >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y imagemagick
+          fi
+          src='proxy-icons/IMG_5626.jpeg'
+          tmp='proxy-icons/IMG_5626.reframed.jpeg'
+          test -f "$src"
+          convert "$src" \
+            -colorspace sRGB \
+            -fuzz 8% -trim +repage \
+            -resize '102x102>' \
+            -gravity center \
+            -background '#FAFAFA' \
+            -extent 108x108 \
+            -sampling-factor 4:4:4 \
+            -quality 100 \
+            "$tmp"
+          test "$(identify -format '%wx%h' "$tmp")" = '108x108'
+          mv "$tmp" "$src"
+          rm -f \
+            proxy-icons/IMG_5626_new.jpeg \
+            proxy-icons/IMG_5626_modified.b64 \
+            proxy-icons/README_TMP.md \
+            proxy-icons/DO_NOT_USE.txt \
+            proxy-icons/TEMP2.txt \
+            proxy-icons/TEMP3.txt \
+            proxy-icons/TEMP4.txt \
+            proxy-icons/TEMP5.txt \
+            proxy-icons/TEMP6.txt \
+            .github/workflows/fix-img-5626.yml
+          echo "Result: $(identify -format '%m %wx%h %b' "$src")"
+
+      - name: Commit cleaned result
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'proxy-icons: tighten IMG_5626 margins to 2-5px'
+          git push origin HEAD:main
