@@ -1,7 +1,7 @@
 # NAME: Advertising-2
 # AUTHOR: clxmhcs
 # REPO: https://github.com/clxmhcs/quantumult-X-fenliu
-# UPDATED: 2026-09-02 11:04:54
+# UPDATED: 2026-09-02 12:00:00
 # HOST-KEYWORD: e
 # HOST-SUFFIX: 3
 # TOTAL: 3
@@ -58,8 +58,7 @@ URL-REGEX,^https?://lf-cdn-tos\.bytescm\.com/obj/static/ad/.*,REJECT
 URL-REGEX,^https?://youku-crm-product\.youku\.com/creative-center/.*,REJECT
 
 # ===== 爱奇艺广告 =====
-DOMAIN-SUFFIX,kjp.cupid.iqiyi.com,REJECT
-DOMAIN-SUFFIX,t7z.cupid.iqiyi.com,REJECT
+# kjp.cupid.iqiyi.com / t7z.cupid.iqiyi.com 交由爱奇艺响应重写处理，不能直接 REJECT
 DOMAIN-SUFFIX,resource.cupid.iqiyi.com,REJECT
 DOMAIN-SUFFIX,alsc-ug-monitor-callback.alibaba.com,REJECT
 DOMAIN-SUFFIX,bv.brg0.com,REJECT
