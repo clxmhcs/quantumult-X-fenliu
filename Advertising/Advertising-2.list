@@ -50,7 +50,8 @@ DOMAIN-SUFFIX,domob.cn,REJECT
 URL-REGEX,.*51wnl-cq\.com/wnl-advert.*,REJECT
 
 # ===== 优酷广告 =====
-DOMAIN-SUFFIX,ad-api.adn-plus.com.cn,REJECT
+# 剧集冷缓存单变量实验：临时放行 ad-api.adn-plus.com.cn，验证其是否参与广告缓存/初始化状态建立。
+# DOMAIN-SUFFIX,ad-api.adn-plus.com.cn,REJECT
 DOMAIN-SUFFIX,api.qttunion.com,REJECT
 DOMAIN-SUFFIX,service.qttunion.com,REJECT
 DOMAIN-SUFFIX,sdk.1rtb.net,REJECT
