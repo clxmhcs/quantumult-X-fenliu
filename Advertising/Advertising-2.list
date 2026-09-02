@@ -55,6 +55,7 @@ DOMAIN-SUFFIX,api.qttunion.com,REJECT
 DOMAIN-SUFFIX,service.qttunion.com,REJECT
 DOMAIN-SUFFIX,sdk.1rtb.net,REJECT
 URL-REGEX,^https?://lf-cdn-tos\.bytescm\.com/obj/static/ad/.*,REJECT
+URL-REGEX,^https?://youku-crm-product\.youku\.com/creative-center/.*,REJECT
 
 # ===== 爱奇艺广告 =====
 DOMAIN-SUFFIX,kjp.cupid.iqiyi.com,REJECT
