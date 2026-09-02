@@ -1,0 +1,10 @@
+# 优酷商业化 Banner 去广告 - v1
+# 依据 youku.har / youku1.har 已确认结构：
+# - 仅处理 un-acs.youku.com 的 UPS 播放响应
+# - 仅当账号标记为“商业化页面banner素材专用”且标题以“创意中心-”开头时清空播放流
+# - 普通视频、JSON 解析失败或结构变化时均原样放行
+# - 商业封面及第三方广告域名继续由 Advertising/Advertising-2.list 处理
+
+^https:\/\/un-acs\.youku\.com\/gw\/mtop\.youku\.play\.ups\.appinfo\.get\/1\.1(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E4%BC%98%E9%85%B7%E6%8B%A6%E6%88%AA/youku-commercial-v1.js
+
+hostname = un-acs.youku.com
