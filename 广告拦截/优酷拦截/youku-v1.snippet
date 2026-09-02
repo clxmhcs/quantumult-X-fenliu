@@ -1,12 +1,13 @@
-# 优酷广告拦截 - 稳定基线
+# 优酷广告拦截 - UPS 纯诊断阶段
 # 文件名保留 youku-v1.snippet，以兼容已添加的远程重写地址。
 #
-# 1) UPS 商业化视频：由 youku-commercial-v1.js 精确清空播放流。
-# 2) HTTPS 广告路径继续由 rewrite 层 url reject。
-# 3) “学习时刻”仍只拦截已确认的唯一 H5 落地页和唯一素材 URL；不扩大到整个公共域名。
-# 4) 已撤销 kuflix_space -> data={} 实验：实机会导致视频持续转圈。
+# 2026-09-02 实机发现：电影可以播放，但剧集在 UPS 商业视频 stream 被清空后可能持续转圈。
+# 因此当前 youku-commercial-v1.js 对所有 UPS 响应 100% 原样放行，只记录安全定位字段。
+# 先验证剧集恢复，再根据日志区分页面广告与剧集播放前商业阶段。
+#
+# HTTPS 路径级 REJECT 暂时保持不变，以单独验证“UPS 响应修改”是否为剧集转圈原因。
 
-# ===== 优酷 UPS 商业化视频 =====
+# ===== 优酷 UPS：纯诊断 / 不修改响应 =====
 ^https:\/\/un-acs\.youku\.com\/gw\/mtop\.youku\.play\.ups\.appinfo\.get\/1\.1(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E4%BC%98%E9%85%B7%E6%8B%A6%E6%88%AA/youku-commercial-v1.js
 
 # ===== 第三方广告组件 / 优酷商业素材 =====
