@@ -1,26 +1,20 @@
-# 优酷广告拦截 - 剧集转圈隔离阶段
+# 优酷广告拦截 - 稳定基线
 # 文件名保留 youku-v1.snippet，以兼容已添加的远程重写地址。
 #
-# 2026-09-02 实机确认：
-# - 电影可以正常播放；
-# - 剧集仍可能持续转圈；
-# - UPS 当前已 100% 原样放行，剧集仍未恢复。
-#
-# 因此本阶段继续隔离：
-# 1) 只保留 UPS 纯诊断脚本，绝不修改响应；
-# 2) 暂时撤掉本 snippet 中全部 url reject；
-# 3) Advertising-2.list 暂时不动。
-#
-# 目的：判断剧集转圈是否由以下路径级拦截之一造成：
-# - lf-cdn-tos.bytescm.com/obj/static/ad/*
-# - youku-crm-product.youku.com/creative-center/*
-# - o.youku.com/m/u07ljj6bit
-# - “学习时刻”唯一素材 URL
+# 1) UPS 商业化视频：由 youku-commercial-v1.js 精确清空播放流。
+# 2) HTTPS 广告路径继续由 rewrite 层 url reject。
+# 3) “学习时刻”仍只拦截已确认的唯一 H5 落地页和唯一素材 URL；不扩大到整个公共域名。
+# 4) 已撤销 kuflix_space -> data={} 实验：实机会导致视频持续转圈。
 
-# ===== 优酷 UPS：纯诊断 / 100% 原样放行 =====
+# ===== 优酷 UPS 商业化视频 =====
 ^https:\/\/un-acs\.youku\.com\/gw\/mtop\.youku\.play\.ups\.appinfo\.get\/1\.1(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E4%BC%98%E9%85%B7%E6%8B%A6%E6%88%AA/youku-commercial-v1.js
 
-# 本阶段故意不配置任何 url reject。
-# 若剧集恢复，再逐条恢复路径级规则定位具体冲突项。
+# ===== 第三方广告组件 / 优酷商业素材 =====
+^https?:\/\/lf-cdn-tos\.bytescm\.com\/obj\/static\/ad\/.*$ url reject
+^https?:\/\/youku-crm-product\.youku\.com\/creative-center\/.*$ url reject
 
-hostname = un-acs.youku.com
+# ===== 首页“学习时刻”精确拦截 =====
+^https:\/\/o\.youku\.com\/m\/u07ljj6bit(?:\?.*)?$ url reject
+^https?:\/\/liangcang-material\.alicdn\.com\/prod\/upload\/e87cf4ecc6b24721b068dccf9500ad9a\.webp\.jpg(?:\?.*)?$ url reject
+
+hostname = un-acs.youku.com, lf-cdn-tos.bytescm.com, youku-crm-product.youku.com, o.youku.com, liangcang-material.alicdn.com
