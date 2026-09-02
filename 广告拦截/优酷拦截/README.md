@@ -2,60 +2,106 @@
 
 本目录用于维护 Quantumult X 的优酷 App 广告拦截规则与脚本。
 
-## 当前 v1
+## 当前阶段
 
 当前实现由两部分组成：
 
 1. `Advertising/Advertising-2.list`
    - 拦截已确认的第三方广告 SDK / 广告请求域名。
-   - 精确拦截字节可玩广告组件路径。
-   - 精确拦截 `youku-crm-product.youku.com/creative-center/` 商业素材路径。
 
 2. `youku-v1.snippet` + `youku-commercial-v1.js`
-   - 仅重写 `un-acs.youku.com/gw/mtop.youku.play.ups.appinfo.get/1.1` 的响应。
-   - 只有同时满足以下两个条件才判定为当前已确认的优酷商业化 Banner 视频：
+   - 重写 `un-acs.youku.com/gw/mtop.youku.play.ups.appinfo.get/1.1` 的响应。
+   - 商业视频识别必须同时满足：
      - `data.data.video.username` 或 `data.data.uploader.username` 等于 `商业化页面banner素材专用`；
      - `data.data.video.title` 以 `创意中心-` 开头。
-   - 命中后清空播放流、默认可用清晰度和视频预览图。
-   - 普通视频、JSON 解析失败、结构变化或识别条件不完整时全部 fail-open 原样放行。
+   - 普通视频、解析失败、结构变化或条件不完整时全部 fail-open 原样放行。
+
+## kuflix_space.1 实验
+
+`youku3.har` / `youku4.har` 已确认“我的”页黑色商业广告位的 UPS 请求包含：
+
+```text
+spmid = a2h0f.8166709.kuflix_space.1
+```
+
+同时请求中的广告参数出现：
+
+```text
+needad = 0
+position = 7
+```
+
+这说明 UPS 更像父级 Native 广告卡内部的播放器，而不是负责创建广告卡的接口。
+
+当前实验逻辑：
+
+- 只有同时命中 `kuflix_space.1` 和上述商业视频双条件时，才把 UPS 响应的顶层 `data` 改为空对象：
+
+```json
+{
+  "api": "mtop.youku.play.ups.appinfo.get",
+  "data": {},
+  "ret": ["SUCCESS::调用成功"],
+  "v": "1.1"
+}
+```
+
+- 目的：测试 Native 父广告卡收到“调用成功但无有效视频数据”后是否自动收起。
+- 非 `kuflix_space.1` 的已确认商业视频仍使用旧逻辑：清空 `stream`、默认清晰度和预览图。
+- 正常视频完全不修改。
 
 ## Quantumult X 远程重写
 
-远程 snippet：
+远程 snippet 地址保持不变：
 
 ```text
 https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E4%BC%98%E9%85%B7%E6%8B%A6%E6%88%AA/youku-v1.snippet
 ```
 
-`youku-v1.snippet` 已包含：
+更新仓库后只需在 Quantumult X 中刷新该远程重写，无需重新添加。
 
-```text
-hostname = un-acs.youku.com
-```
+## 当前路径级拦截
 
-因此不要另外扩大 MITM 到整个 `*.youku.com`，当前 v1 只需要处理已确认的 UPS 接口。
+`youku-v1.snippet` 仍保留：
+
+- 字节广告组件 `/obj/static/ad/`
+- `youku-crm-product.youku.com/creative-center/`
+- “学习时刻”已确认的 H5 落地页
+- “学习时刻”已确认的唯一素材 URL
+
+这些规则只处理已确认路径，不扩大到公共域名。
 
 ## 不应静态封锁
 
-以下主机同时承担正常优酷业务，当前禁止整域 REJECT：
+以下主机同时承担正常优酷业务，禁止整域 REJECT：
 
 ```text
 un-acs.youku.com
 *.cibntv.net
 gw.alicdn.com
 liangcang-material.alicdn.com
+o.youku.com
 ```
 
 尤其不能整域封锁 `un-acs.youku.com` 或 CIBN 视频 CDN，否则可能影响正常电影、电视剧、综艺播放。
 
-## v1 实机验收
+## 当前实机验收标准
 
-启用 `Advertising-2.list` 和 `youku-v1.snippet` 后，冷启动优酷并观察已确认的商业化 Banner：
+刷新远程重写后，进入“我的”页触发商业广告，观察 Quantumult X 日志：
 
-- 若商业 Banner 整体消失：当前 v1 可继续作为稳定基线。
-- 若视频不再播放，但仍留下空白/静态 Banner 卡片：说明播放器层拦截生效，但首页 Feed 上游仍在创建商业卡；下一阶段应抓取首页 Feed / 页面配置接口并从源头删除商业卡，而不是扩大播放器或 CDN 拦截范围。
-- 若正常视频播放异常：立即检查脚本日志，确认是否存在新的非商业视频误命中结构。
+预期实验日志：
+
+```text
+优酷商业化广告: kuflix_space实验命中 ... -> top-level data={}
+```
+
+然后观察 UI：
+
+- 若整个广告卡自动消失/高度塌缩：说明父级 Native 卡会根据 UPS 无数据自动关闭，该实验可继续收敛为正式方案。
+- 若仍然保留黑框：说明父级 Native 卡完全独立于 UPS 成败，下一步必须继续定位真正的 `kuflix_space` 父级 Native 数据/配置。
+- 若出现持续高频重试：说明空业务 data 会触发播放器重试，需停止该实验并改用另一种响应状态。
+- 若正常视频异常：检查日志；正常视频应显示“正常视频原样放行”。
 
 ## 依据
 
-当前识别条件来自 2026-09-02 的 `youku.har` 与 `youku1.har` 两次独立样本：分别确认了舒肤佳、潘婷商业化视频，二者均使用 `商业化页面banner素材专用` 与 `创意中心-` 标识。
+当前商业视频识别来自 2026-09-02 多份独立 HAR 样本：舒肤佳、潘婷等商业视频均使用 `商业化页面banner素材专用` 与 `创意中心-` 标识。`youku3.har` / `youku4.har` 又进一步确认“我的”页广告播放器使用 `a2h0f.8166709.kuflix_space.1`。
