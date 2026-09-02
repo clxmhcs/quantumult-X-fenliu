@@ -1,10 +1,19 @@
-# 优酷商业化 Banner 去广告 - v1
-# 依据 youku.har / youku1.har 已确认结构：
-# - 仅处理 un-acs.youku.com 的 UPS 播放响应
-# - 仅当账号标记为“商业化页面banner素材专用”且标题以“创意中心-”开头时清空播放流
-# - 普通视频、JSON 解析失败或结构变化时均原样放行
-# - 商业封面及第三方广告域名继续由 Advertising/Advertising-2.list 处理
+# 优酷广告拦截 - v2 第一阶段
+# 文件名保留 youku-v1.snippet，以兼容已添加的远程重写地址。
+#
+# 1) UPS 商业化视频：继续由 youku-commercial-v1.js 精确清空播放流。
+# 2) 将 youku2.har 已确认但 Advertising-2.list 未实际拦住的 HTTPS 路径改为 rewrite 层 url reject。
+# 3) “学习时刻”仅拦截已确认的唯一 H5 落地页和唯一素材 URL；不扩大到整个 o.youku.com 或 liangcang-material.alicdn.com。
 
+# ===== 优酷 UPS 商业化视频 =====
 ^https:\/\/un-acs\.youku\.com\/gw\/mtop\.youku\.play\.ups\.appinfo\.get\/1\.1(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E4%BC%98%E9%85%B7%E6%8B%A6%E6%88%AA/youku-commercial-v1.js
 
-hostname = un-acs.youku.com
+# ===== 第三方广告组件 / 优酷商业素材 =====
+^https?:\/\/lf-cdn-tos\.bytescm\.com\/obj\/static\/ad\/.*$ url reject
+^https?:\/\/youku-crm-product\.youku\.com\/creative-center\/.*$ url reject
+
+# ===== 首页“学习时刻”精确拦截 =====
+^https:\/\/o\.youku\.com\/m\/u07ljj6bit(?:\?.*)?$ url reject
+^https?:\/\/liangcang-material\.alicdn\.com\/prod\/upload\/e87cf4ecc6b24721b068dccf9500ad9a\.webp\.jpg(?:\?.*)?$ url reject
+
+hostname = un-acs.youku.com, lf-cdn-tos.bytescm.com, youku-crm-product.youku.com, o.youku.com, liangcang-material.alicdn.com
