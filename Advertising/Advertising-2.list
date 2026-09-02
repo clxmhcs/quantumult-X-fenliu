@@ -1,7 +1,7 @@
 # NAME: Advertising-2
 # AUTHOR: clxmhcs
 # REPO: https://github.com/clxmhcs/quantumult-X-fenliu
-# UPDATED: 2026-09-02 12:00:00
+# UPDATED: 2026-09-02 12:16:00
 # HOST-KEYWORD: e
 # HOST-SUFFIX: 3
 # TOTAL: 3
@@ -54,8 +54,7 @@ DOMAIN-SUFFIX,ad-api.adn-plus.com.cn,REJECT
 DOMAIN-SUFFIX,api.qttunion.com,REJECT
 DOMAIN-SUFFIX,service.qttunion.com,REJECT
 DOMAIN-SUFFIX,sdk.1rtb.net,REJECT
-URL-REGEX,^https?://lf-cdn-tos\.bytescm\.com/obj/static/ad/.*,REJECT
-URL-REGEX,^https?://youku-crm-product\.youku\.com/creative-center/.*,REJECT
+# HTTPS 路径级广告规则已迁移到 广告拦截/优酷拦截/youku-v1.snippet 的 rewrite url reject。
 
 # ===== 爱奇艺广告 =====
 # kjp.cupid.iqiyi.com / t7z.cupid.iqiyi.com 交由爱奇艺响应重写处理，不能直接 REJECT
