@@ -64,7 +64,7 @@ delete data.ad.vip_tips;
 
 ```text
 data.stream
-\data.video
+data.video
 播放权限
 ad.reqid
 ad.algoBuckets
