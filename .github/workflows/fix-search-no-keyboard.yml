@@ -1,0 +1,51 @@
+name: Fix search buttons keyboard behavior
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-search-no-keyboard.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Patch large editor search behavior
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('large-editor.html')
+          s = p.read_text(encoding='utf-8')
+
+          old = 'e.editor.focus();e.editor.setSelectionRange(match.index,match.index+match[0].length);s.find=match.index+match[0].length'
+          new = '''e.editor.setSelectionRange(match.index,match.index+match[0].length);let line=0,pos=0;while(pos<match.index){const nl=source.indexOf("\\n",pos);if(nl<0||nl>=match.index)break;line++;pos=nl+1}const cs=getComputedStyle(e.editor),lh=parseFloat(cs.lineHeight)||23,lineStart=source.lastIndexOf("\\n",Math.max(0,match.index-1))+1,col=match.index-lineStart,ch=(parseFloat(cs.fontSize)||16)*.62;e.editor.scrollTop=Math.max(0,line*lh-e.editor.clientHeight*.35);e.editor.scrollLeft=Math.max(0,col*ch-e.editor.clientWidth*.2);e.editor.blur();s.find=match.index+match[0].length'''
+          if old not in s:
+              raise SystemExit('target find() focus snippet not found')
+          s = s.replace(old, new, 1)
+
+          old_handlers = '$("searchBtn").onclick=()=>{s.find=0;e.editor.setSelectionRange(0,0);find()};e.find.onclick=find;'
+          new_handlers = '$("searchBtn").onclick=()=>{e.search.blur();s.find=0;e.editor.setSelectionRange(0,0);find()};e.find.onclick=()=>{e.search.blur();find()};'
+          if old_handlers not in s:
+              raise SystemExit('target search handlers not found')
+          s = s.replace(old_handlers, new_handlers, 1)
+
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit patch and remove temporary workflow
+        shell: bash
+        run: |
+          rm -f .github/workflows/fix-search-no-keyboard.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add large-editor.html .github/workflows/fix-search-no-keyboard.yml
+          git diff --cached --quiet && exit 0
+          git commit -m 'Fix search navigation without reopening iOS keyboard'
+          git push origin main
