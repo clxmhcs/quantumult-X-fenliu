@@ -1,0 +1,61 @@
+name: Patch large editor search
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-large-editor-search.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Add explicit search button
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('large-editor.html')
+          source = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  '<input id="search" placeholder="查找文本、域名、策略或规则" spellcheck="false"><button id="find" class="btn" type="button">下一个</button>',
+                  '<input id="search" placeholder="查找文本、域名、策略或规则" spellcheck="false"><button id="searchBtn" class="btn primary" type="button">搜索</button><button id="find" class="btn" type="button">下一个</button>'
+              ),
+              (
+                  'e.open.onclick=openGitHub;e.find.onclick=find;e.add.onclick=add;',
+                  'e.open.onclick=openGitHub;$("searchBtn").onclick=()=>{s.find=0;e.editor.setSelectionRange(0,0);find()};e.find.onclick=find;e.add.onclick=add;'
+              ),
+              (
+                  'e.search.onkeydown=x=>{if(x.key==="Enter")find()};',
+                  'e.search.oninput=()=>{s.find=0};e.search.onkeydown=x=>{if(x.key==="Enter"){$("searchBtn").click()}};'
+              ),
+          ]
+
+          for old, new in replacements:
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f'anchor count mismatch: expected 1, got {count}: {old[:80]}')
+              source = source.replace(old, new, 1)
+
+          path.write_text(source, encoding='utf-8')
+          Path('.github/workflows/patch-large-editor-search.yml').unlink()
+          PY
+      - name: Commit patch and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git diff --cached --quiet && exit 0
+          git commit -m 'Add search button to large editor'
+          git push origin HEAD:main
