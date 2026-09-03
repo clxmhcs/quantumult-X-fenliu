@@ -1,9 +1,0 @@
-# NAME: Youku-Playback-Direct
-# AUTHOR: clxmhcs
-# PURPOSE: 优酷播放链路单变量放行实验
-# UPDATED: 2026-09-03
-#
-# 仅放行当前已通过 HAR 证实参与正常播放/NTK 探测的域名。
-# 本轮只测试 vali-g1，不同时放行 vali-ugc，避免引入额外变量。
-
-DOMAIN,vali-g1.cp31.ott.cibntv.net,DIRECT
