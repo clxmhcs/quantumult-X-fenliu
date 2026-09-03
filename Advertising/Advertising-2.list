@@ -1,7 +1,7 @@
 # NAME: Advertising-2
 # AUTHOR: clxmhcs
 # REPO: https://github.com/clxmhcs/quantumult-X-fenliu
-# UPDATED: 2026-09-03 14:10:00
+# UPDATED: 2026-09-03 15:15:00
 # HOST-KEYWORD: e
 # HOST-SUFFIX: 3
 # TOTAL: 3
@@ -50,11 +50,11 @@ DOMAIN-SUFFIX,domob.cn,REJECT
 URL-REGEX,.*51wnl-cq\.com/wnl-advert.*,REJECT
 
 # ===== 优酷广告 =====
-# 剧集冷缓存单变量实验（第2轮）：恢复 ad-api.adn-plus.com.cn 拦截；仅临时放行 sdk.1rtb.net。
+# 剧集冷缓存单变量实验（第3轮）：恢复 sdk.1rtb.net 拦截；临时放行 QTTUnion 的 api + service 两个配套域名。
 DOMAIN-SUFFIX,ad-api.adn-plus.com.cn,REJECT
-DOMAIN-SUFFIX,api.qttunion.com,REJECT
-DOMAIN-SUFFIX,service.qttunion.com,REJECT
-# DOMAIN-SUFFIX,sdk.1rtb.net,REJECT
+# DOMAIN-SUFFIX,api.qttunion.com,REJECT
+# DOMAIN-SUFFIX,service.qttunion.com,REJECT
+DOMAIN-SUFFIX,sdk.1rtb.net,REJECT
 # HTTPS 路径级广告规则已迁移到 广告拦截/优酷拦截/youku-v1.snippet 的 rewrite url reject。
 
 # ===== 爱奇艺广告 =====
