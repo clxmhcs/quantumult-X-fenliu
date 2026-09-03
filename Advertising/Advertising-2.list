@@ -50,10 +50,10 @@ DOMAIN-SUFFIX,domob.cn,REJECT
 URL-REGEX,.*51wnl-cq\.com/wnl-advert.*,REJECT
 
 # ===== 优酷广告 =====
-# 剧集冷缓存单变量实验（第3轮）：恢复 sdk.1rtb.net 拦截；临时放行 QTTUnion 的 api + service 两个配套域名。
+# 第三方域名单变量实验已结束：整份 Advertising-2 关闭后免费集仍会等待广告时间轴，因此恢复正式拦截。
 DOMAIN-SUFFIX,ad-api.adn-plus.com.cn,REJECT
-# DOMAIN-SUFFIX,api.qttunion.com,REJECT
-# DOMAIN-SUFFIX,service.qttunion.com,REJECT
+DOMAIN-SUFFIX,api.qttunion.com,REJECT
+DOMAIN-SUFFIX,service.qttunion.com,REJECT
 DOMAIN-SUFFIX,sdk.1rtb.net,REJECT
 # HTTPS 路径级广告规则已迁移到 广告拦截/优酷拦截/youku-v1.snippet 的 rewrite url reject。
 
