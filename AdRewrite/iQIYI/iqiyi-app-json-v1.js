@@ -1,19 +1,20 @@
-// 爱奇艺 App 广告拦截 - v1
+// iQIYI App ad filtering - v1
 // Quantumult X script-response-body
-// 依据 2026-09-02 iqiyi.har：
+// Based on 2026-09-02 iqiyi.har:
 // 1) kjp.cupid.iqiyi.com/mixer / t7z.cupid.iqiyi.com/mixer
-//    - 开屏 azt=101（实时 + 未来预缓存）
-//    - 巨幕 azt=600、Banner azt=700，以及其它 Cupid 广告槽
-//    - 清空 adSlots / bkcrs / futureSlots，保留其它非广告配置字段
+//    - Splash ads azt=101 (real-time + future pre-cache)
+//    - Masthead azt=600, Banner azt=700, and other Cupid ad slots
+//    - Clear adSlots / bkcrs / futureSlots while preserving other non-ad configuration fields
 // 2) cards.iqiyi.com/views_home/3.0/qy_home
-//    - 删除 cards[*].blocks 中 statistics.is_cupid == 1 的广告块
-//    - 若某 card 的 blocks 因广告过滤变空，则删除该空 card
-//    - 净化 base.statistics.ad_str / ad_str_map 中嵌套的 Cupid JSON
+//    - Remove ad blocks from cards[*].blocks where statistics.is_cupid == 1
+//    - If a card becomes empty because of ad filtering, remove that empty card
+//    - Sanitize nested Cupid JSON in base.statistics.ad_str / ad_str_map
 // 3) iface2.iqiyi.com/video_feed/3.0/feed
-//    - 删除 data.feeds 中带 ad 对象的广告 Feed
-//    - 净化 data.ad.adstr 中嵌套的 Cupid JSON
+//    - Remove ad feeds from data.feeds when an ad object is present
+//    - Sanitize nested Cupid JSON in data.ad.adstr
 //
-// 设计原则：只修改 HAR 已确认结构；解析失败或结构不匹配时 fail-open 原样放行。
+// Design principle: modify only structures confirmed in the HAR; fail open and return
+// the original response when parsing fails or the expected structure does not match.
 
 (() => {
   const url = $request?.url || "";
@@ -22,7 +23,7 @@
   console.log("iqiyi-app-json-v1 2026-09-02");
 
   if (typeof originalBody !== "string" || originalBody.length === 0) {
-    console.log("爱奇艺 v1: 无文本响应体，原样放行");
+    console.log("iQIYI v1: no text response body, passing through unchanged");
     $done({ body: originalBody });
     return;
   }
@@ -31,7 +32,7 @@
   try {
     body = JSON.parse(originalBody);
   } catch (error) {
-    console.log(`爱奇艺 v1: JSON 解析失败，原样放行: ${error}`);
+    console.log(`iQIYI v1: JSON parse failed, passing through unchanged: ${error}`);
     $done({ body: originalBody });
     return;
   }
@@ -46,7 +47,7 @@
     } else if (url.includes("iface2.iqiyi.com/video_feed/3.0/feed")) {
       changed = handleVideoFeed(body);
     } else {
-      console.log(`爱奇艺 v1: 未匹配处理器，原样放行: ${url}`);
+      console.log(`iQIYI v1: no matching handler, passing through unchanged: ${url}`);
     }
 
     if (!changed) {
@@ -56,7 +57,7 @@
 
     $done({ body: JSON.stringify(body) });
   } catch (error) {
-    console.log(`爱奇艺 v1: 处理异常，原样放行: ${error}`);
+    console.log(`iQIYI v1: processing error, passing through unchanged: ${error}`);
     $done({ body: originalBody });
   }
 })();
@@ -70,13 +71,13 @@ function handleCupidMixer(obj) {
 
   if (result.changed) {
     console.log(
-      `爱奇艺 v1 / Cupid mixer: ` +
+      `iQIYI v1 / Cupid mixer: ` +
       `adSlots ${result.adSlots}->0, ` +
       `bkcrs ${result.bkcrs}->0, ` +
       `futureSlots ${result.futureSlots}`
     );
   } else {
-    console.log("爱奇艺 v1 / Cupid mixer: 未发现需要清理的广告数据");
+    console.log("iQIYI v1 / Cupid mixer: no ad data needs cleanup");
   }
 
   return result.changed;
@@ -107,7 +108,8 @@ function handleHome(obj) {
         card.blocks = filtered;
       }
 
-      // 只删除“本次因广告过滤而变空”的 card；原本为空的正常 card 保持不动。
+      // Remove only cards that became empty because of this ad filtering pass.
+      // Cards that were already empty are preserved unchanged.
       if (removed > 0 && before > 0 && filtered.length === 0) {
         removedCards++;
         continue;
@@ -152,8 +154,8 @@ function handleHome(obj) {
   }
 
   console.log(
-    `爱奇艺 v1 / 首页: 删除广告 block=${removedBlocks}, ` +
-    `空广告 card=${removedCards}, 净化嵌套 Cupid=${sanitizedEmbedded}`
+    `iQIYI v1 / home: removed ad blocks=${removedBlocks}, ` +
+    `empty ad cards=${removedCards}, sanitized nested Cupid=${sanitizedEmbedded}`
   );
 
   return changed;
@@ -166,7 +168,7 @@ function handleVideoFeed(obj) {
 
   const data = obj?.data;
   if (!data || typeof data !== "object" || Array.isArray(data)) {
-    console.log("爱奇艺 v1 / video_feed: 未发现 data，原样放行");
+    console.log("iQIYI v1 / video_feed: data not found, passing through unchanged");
     return false;
   }
 
@@ -196,8 +198,8 @@ function handleVideoFeed(obj) {
   }
 
   console.log(
-    `爱奇艺 v1 / video_feed: 删除广告 Feed=${removedFeeds}, ` +
-    `净化嵌套 Cupid=${sanitizedEmbedded}`
+    `iQIYI v1 / video_feed: removed ad feeds=${removedFeeds}, ` +
+    `sanitized nested Cupid=${sanitizedEmbedded}`
   );
 
   return changed;
@@ -229,7 +231,7 @@ function sanitizeCupidString(value) {
       value: result.changed ? JSON.stringify(parsed) : value
     };
   } catch (error) {
-    console.log(`爱奇艺 v1: 嵌套 Cupid JSON 解析失败，保持原值: ${error}`);
+    console.log(`iQIYI v1: nested Cupid JSON parse failed, keeping original value: ${error}`);
     return { changed: false, value };
   }
 }
@@ -262,7 +264,7 @@ function sanitizeCupidObject(obj) {
     }
   }
 
-  // HAR 中 futureSlots 同时出现过 object 和 array，必须保持原类型。
+  // futureSlots appeared as both object and array in the HAR, so preserve its original type.
   if (Array.isArray(obj.futureSlots)) {
     const before = obj.futureSlots.length;
     result.futureSlots = `array:${before}->0`;

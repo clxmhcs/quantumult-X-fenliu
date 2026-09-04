@@ -1,15 +1,16 @@
-# 爱奇艺 App 广告拦截 - v1
-# 依据 2026-09-02 iqiyi.har 制作
+# iQIYI App ad filtering - v1
+# Based on 2026-09-02 iqiyi.har
 #
-# 1) Cupid mixer：开屏、未来预缓存、巨幕、Banner 等直接广告槽
-# 2) qy_home：首页焦点图 / 轮播信息流 / 瀑布流广告块
-# 3) video_feed：视频信息流原生广告
+# 1) Cupid mixer: splash ads, future pre-cache, masthead, Banner, and other direct ad slots
+# 2) qy_home: home-page focus images, carousel/feed ads, and waterfall ad blocks
+# 3) video_feed: native ads in the video feed
 #
-# 注意：kjp.cupid.iqiyi.com / t7z.cupid.iqiyi.com 必须允许返回响应，
-# 不能同时在分流规则中 DOMAIN-SUFFIX REJECT，否则 script-response-body 无法执行。
+# Important: kjp.cupid.iqiyi.com / t7z.cupid.iqiyi.com must be allowed to return responses.
+# Do not simultaneously apply a DOMAIN-SUFFIX REJECT rule to them, or script-response-body
+# will not be able to run.
 
-^https?:\/\/(?:kjp|t7z)\.cupid\.iqiyi\.com\/mixer(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%88%B1%E5%A5%87%E8%89%BA%E6%8B%A6%E6%88%AA/iqiyi-app-json-v1.js
-^https?:\/\/cards\.iqiyi\.com\/views_home\/3\.0\/qy_home(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%88%B1%E5%A5%87%E8%89%BA%E6%8B%A6%E6%88%AA/iqiyi-app-json-v1.js
-^https?:\/\/iface2\.iqiyi\.com\/video_feed\/3\.0\/feed(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%88%B1%E5%A5%87%E8%89%BA%E6%8B%A6%E6%88%AA/iqiyi-app-json-v1.js
+^https?:\/\/(?:kjp|t7z)\.cupid\.iqiyi\.com\/mixer(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/iQIYI/iqiyi-app-json-v1.js
+^https?:\/\/cards\.iqiyi\.com\/views_home\/3\.0\/qy_home(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/iQIYI/iqiyi-app-json-v1.js
+^https?:\/\/iface2\.iqiyi\.com\/video_feed\/3\.0\/feed(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/iQIYI/iqiyi-app-json-v1.js
 
 hostname = kjp.cupid.iqiyi.com, t7z.cupid.iqiyi.com, cards.iqiyi.com, iface2.iqiyi.com
