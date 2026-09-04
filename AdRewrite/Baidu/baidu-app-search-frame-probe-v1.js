@@ -1,14 +1,14 @@
-// 百度主 App 搜索容器 /sf 定点诊断 v3
+// Baidu main App search container /sf targeted diagnostics - v3
 // Quantumult X script-request-header / script-response-body
 //
-// 目标：
+// Targets:
 // 1) https://m.baidu.com/searchframe...
 // 2) https://m.baidu.com/sf...
 //
-// 只记录请求生命周期、query 字段长度、响应长度与结构计数。
-// v2 观察 searchframe 的页面骨架、Native/WebView bridge、DOM 注入与事件机制。
-// v3 额外分类 searchframe <link> 的 rel / as / href 主机类别，只记录数量，不记录实际 URL。
-// 不记录关键词、Cookie、Token、scheme/脚本 URL 等实际值，不修改请求或响应。
+// Record only request lifecycle, query-field lengths, response length, and structural counts.
+// v2 observes the searchframe page skeleton, Native/WebView bridge, DOM injection, and event mechanisms.
+// v3 additionally classifies searchframe <link> rel / as / href host categories; record counts only, never actual URLs.
+// Do not record keywords, Cookie, Token, scheme/script URLs, or other actual values; do not modify requests or responses.
 
 const TAG = "baidu-app-search-frame-probe";
 

@@ -1,11 +1,11 @@
-// 百度主 App 开屏预缓存持久化探针 - v2
+// Baidu main App splash pre-cache persistent probe - v2
 // Quantumult X script-request-header
 //
-// v2 与 v1 逻辑等价，仅更换远程子资源文件名，绕过 Quantumult X 对旧 v1 URL
-// 可能保留的 404/失败缓存状态。
+// v2 is logically equivalent to v1. Only the remote subresource filename changed
+// to bypass a possible cached 404/failure state for the old v1 URL in Quantumult X.
 //
-// 目标：在百度正常使用期间记录疑似开屏预取/素材请求，并保存到 $prefs。
-// 不修改请求，不记录 Cookie / Token / query 参数值；仅保存时间、Host、Path、参数名与方法。
+// Goal: record suspected splash-prefetch/asset requests during normal Baidu usage and save them to $prefs.
+// Do not modify requests and do not record Cookie / Token / query parameter values; save only time, Host, Path, parameter names, and method.
 
 (() => {
   const TAG = "baidu-app-splash-cache-probe-v2";

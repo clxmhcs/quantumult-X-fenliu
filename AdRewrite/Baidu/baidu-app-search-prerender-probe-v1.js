@@ -1,12 +1,12 @@
-// 百度主 App 搜索 ECOM 预取/预渲染运行时诊断 v1
+// Baidu main App search ECOM prefetch/prerender runtime diagnostics - v1
 // Quantumult X script-request-header / script-response-body
 //
-// 目标：
+// Targets:
 // 1) ldy_ajax_prefetch_flag-*-chunk.js
 // 2) imlp_prerender-*-chunk.js
 //
-// 只记录生命周期和 DOM 数量，不记录关键词、Cookie、Token、落地页 URL。
-// 不改变原模块控制流；anchor 不匹配时 fail-open。
+// Record only lifecycle events and DOM counts; do not record keywords, Cookie, Token, or landing-page URLs.
+// Do not change the original module control flow; fail open when an anchor does not match.
 
 const TAG = "baidu-app-search-prerender-probe";
 const DIAG_URL = "https://m.baidu.com/__qx_baidu_search_diag?";

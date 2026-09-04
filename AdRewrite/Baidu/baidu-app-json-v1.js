@@ -1,7 +1,7 @@
-// 百度主 App 广告拦截 - v1 实验重写
+// Baidu main App ad filtering - v1 experimental rewrite
 // Quantumult X script-response-body
-// 依据 2026-08-25 HAR：
-// 1) afdconf.baidu.com/afd/platform -> data.global 广告控制开关
+// Based on the 2026-08-25 HAR:
+// 1) afdconf.baidu.com/afd/platform -> ad control switches under data.global
 // 2) mbd.baidu.com/searchbox?action=splash&cmd=2010 -> data.mt / data.ukey / final_backup_realtime_info
 
 (() => {
@@ -14,7 +14,7 @@
   try {
     body = JSON.parse(originalBody);
   } catch (error) {
-    console.log(`百度App v1: JSON解析失败，保持原响应: ${error}`);
+    console.log(`Baidu App v1: JSON parse failed, keeping original response: ${error}`);
     $done({ body: originalBody });
     return;
   }
@@ -28,7 +28,7 @@
   ) {
     handleSplash(body);
   } else {
-    console.log(`百度App v1: 未匹配处理器，保持响应: ${url}`);
+    console.log(`Baidu App v1: no matching handler, keeping response: ${url}`);
   }
 
   $done({ body: JSON.stringify(body) });
@@ -38,12 +38,12 @@ function handleAfdConfig(obj) {
   const globalConfig = obj?.data?.global;
 
   if (!globalConfig || typeof globalConfig !== "object" || Array.isArray(globalConfig)) {
-    console.log("百度App v1 / afd: 未发现 data.global，保持原响应");
+    console.log("Baidu App v1 / afd: data.global not found, keeping original response");
     return;
   }
 
-  // v1 只关闭 HAR 已确认存在的高层广告控制开关。
-  // 暂不批量修改 data.global 中其余广告/实验字段，也不改 data.sign。
+  // v1 disables only the high-level ad control switches confirmed in the HAR.
+  // Do not bulk-edit other ad/experiment fields under data.global or modify data.sign.
   const switches = [
     "ad_control_search_ad_switch",
     "ad_search_flow_request_with_query",
@@ -60,7 +60,7 @@ function handleAfdConfig(obj) {
 
   for (const key of switches) {
     if (!(key in globalConfig)) {
-      console.log(`百度App v1 / afd: 未发现字段 ${key}`);
+      console.log(`Baidu App v1 / afd: field not found ${key}`);
       continue;
     }
 
@@ -70,38 +70,40 @@ function handleAfdConfig(obj) {
     if (oldValue !== newValue) {
       globalConfig[key] = newValue;
       changed++;
-      console.log(`百度App v1 / afd: ${key} ${String(oldValue)} -> ${String(newValue)}`);
+      console.log(`Baidu App v1 / afd: ${key} ${String(oldValue)} -> ${String(newValue)}`);
     }
   }
 
-  console.log(`百度App v1 / afd: 共修改 ${changed} 个广告控制字段`);
+  console.log(`Baidu App v1 / afd: changed ${changed} ad-control fields`);
 }
 
 function handleSplash(obj) {
   const data = obj?.data;
 
   if (!data || typeof data !== "object" || Array.isArray(data)) {
-    console.log("百度App v1 / splash: 未发现 data，保持原响应");
+    console.log("Baidu App v1 / splash: data not found, keeping original response");
     return;
   }
 
   let changed = 0;
 
-  // HAR 中真实实时开屏广告完整对象位于 data.mt；无实时广告样本中该字段不存在。
+  // In the HAR, the complete live splash-ad object is stored in data.mt.
+  // The field is absent in samples with no live splash ad.
   if ("mt" in data) {
     delete data.mt;
     changed++;
-    console.log("百度App v1 / splash: 已删除实时开屏广告 data.mt");
+    console.log("Baidu App v1 / splash: removed live splash ad data.mt");
   }
 
-  // 无实时广告样本仍会返回 ukey，可能用于本地缓存/候选广告选择，因此置空防止回退。
+  // Samples without a live ad still return ukey, which may be used for local cache
+  // or candidate selection, so clear it to prevent fallback.
   if (typeof data.ukey === "string" && data.ukey.length > 0) {
     data.ukey = "";
     changed++;
-    console.log("百度App v1 / splash: 已清空 data.ukey");
+    console.log("Baidu App v1 / splash: cleared data.ukey");
   }
 
-  // 保留字段类型，仅清空可能的实时回退内容。
+  // Preserve the field type and only clear possible live fallback content.
   if (
     "final_backup_realtime_info" in data &&
     data.final_backup_realtime_info &&
@@ -110,10 +112,10 @@ function handleSplash(obj) {
   ) {
     data.final_backup_realtime_info = {};
     changed++;
-    console.log("百度App v1 / splash: 已清空 final_backup_realtime_info");
+    console.log("Baidu App v1 / splash: cleared final_backup_realtime_info");
   }
 
-  console.log(`百度App v1 / splash: 共修改 ${changed} 个开屏字段`);
+  console.log(`Baidu App v1 / splash: changed ${changed} splash fields`);
 }
 
 function hasQueryParam(url, name, expectedValue) {

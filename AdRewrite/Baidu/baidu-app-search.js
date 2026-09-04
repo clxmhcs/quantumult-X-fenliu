@@ -1,12 +1,12 @@
-// 百度主 App 搜索广告最终清理 + 运行时/生命周期/第二入口诊断
+// Baidu main App search-ad final cleanup + runtime/lifecycle/secondary-entry diagnostics
 // Quantumult X script-response-body / script-request-header / script-response-header / script-request-body
 //
-// 目标响应：wiseSearchHasAd-*-chunk.js
-// 诊断请求：m.baidu.com/__qx_baidu_search_diag
-// 第二入口探针：在 m.baidu.com/s hard reject 条件下，仅记录 m/mbd/h2mbd/www.baidu.com 其他路径元数据。
-// searchbox body 探针：仅记录字段名、长度、控制字段和结构标志；不打印关键词、Cookie、Token。
-// cmd=169 深层探针：仅输出 data.169 的字段路径、类型、数组长度及商业嫌疑字段名，不输出任何字段值。
-// 所有诊断路径均 fail-open，不修改真实请求/响应。
+// Target response: wiseSearchHasAd-*-chunk.js
+// Diagnostic request: m.baidu.com/__qx_baidu_search_diag
+// Secondary-entry probe: while m.baidu.com/s is hard-rejected, record only metadata for other paths on m/mbd/h2mbd/www.baidu.com.
+// searchbox body probe: record only field names, lengths, control fields, and structural flags; never print keywords, Cookie, or Token.
+// cmd=169 deep probe: output only field paths, types, array lengths, and commercially suspicious field names under data.169; never output field values.
+// All diagnostic paths fail open and do not modify real requests or responses.
 
 const TAG = "baidu-app-search";
 const ROUTE_TAG = "baidu-app-search-route-probe";
@@ -25,7 +25,7 @@ const DYNAMIC_POST_ANCHOR = `$r.forEach(function(i){var o=$i[i];o&&n.i$1(functio
     const hasResponse = typeof $response !== "undefined" && $response != null;
     const meta = parseUrlMeta(requestUrl);
 
-    // 页面运行时诊断由 QX 本地截获并打印，不转发上游。
+    // QX intercepts and prints page-runtime diagnostics locally; do not forward them upstream.
     if (requestUrl.includes(DIAG_PATH)) {
       const payload = requestUrl.includes("?") ? requestUrl.slice(requestUrl.indexOf("?") + 1) : "phase=unknown";
       console.log(`[${TAG}] runtime-diag ${payload}`);
@@ -40,7 +40,8 @@ const DYNAMIC_POST_ANCHOR = `$r.forEach(function(i){var o=$i[i];o&&n.i$1(functio
       return;
     }
 
-    // /s 生命周期诊断（正式规则恢复后可继续复用；当前 hard reject 期间不会命中）。
+    // /s lifecycle diagnostics can be reused after the normal rule is restored;
+    // they do not fire while the current hard-reject experiment is active.
     if (!hasResponse && /^https:\/\/m\.baidu\.com\/s\?/i.test(requestUrl)) {
       console.log(
         `[${TAG}] lifecycle search-request-start t_samp=${safeQueryParam(requestUrl, "t_samp") || "-"} ` +
@@ -56,7 +57,7 @@ const DYNAMIC_POST_ANCHOR = `$r.forEach(function(i){var o=$i[i];o&&n.i$1(functio
       return;
     }
 
-    // /searchbox request-body / response-body 诊断。
+    // /searchbox request-body / response-body diagnostics.
     if (meta && isSearchboxTarget(meta.host, meta.path)) {
       if (!hasResponse && typeof $request?.body === "string") {
         logSearchboxRequestBody(requestUrl, meta, $request.body);
@@ -70,7 +71,7 @@ const DYNAMIC_POST_ANCHOR = `$r.forEach(function(i){var o=$i[i];o&&n.i$1(functio
       }
     }
 
-    // 第二搜索入口 header 探针。只记录元数据，明确排除 /s 和本地 beacon。
+    // Secondary search-entry header probe. Record metadata only and explicitly exclude /s and the local beacon.
     if (meta && isRouteProbeHost(meta.host) && !(meta.host === "m.baidu.com" && (meta.path === "/s" || meta.path === DIAG_PATH))) {
       logRouteProbe(requestUrl, meta, hasResponse);
       $done({});

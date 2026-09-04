@@ -1,71 +1,71 @@
-# 百度主 App 广告拦截 - v1 实验重写
-# 作用：
-# 1) 修改 AFD 远程广告控制配置，关闭搜索 / Feed / 部分开屏广告能力
-# 2) 对 splash cmd=2010 做请求侧 + 响应侧双重净化：
-#    - 请求侧清空 adinfo.s / adinfo.d / final_backup_key，削弱本地缓存广告回退
-#    - 响应侧清理实时开屏广告 data.mt / data.ukey / final_backup_realtime_info
-# 3) 精确阻断 search-splash.cdn.bcebos.com 下 splash_*.mp4 开屏素材
-# 4) 持久化记录疑似开屏预取/素材请求；每次 splash 启动自动打印近期候选历史
-# 5) 搜索广告源头：直接处理 m.baidu.com/s 的 application/x-protobuffer 主搜索响应，
-#    在 SP-engine 首次渲染前等长清除 ec_r_* -> ec_wise_ad 广告 HTML，不改变 Protobuf/frame 长度
-# 6) wiseSearchHasAd 只保留为最终兜底，处理未被上游结构覆盖的搜索广告
-# 7) 搜索诊断：wiseSearchHasAd 运行时把 t / ec_wise_ad / ec_r_* / dynamic i[] 数量
-#    发送到同源 __qx_baidu_search_diag；该请求由 QX 本地 204 截获，不转发百度服务器
-# 8) 搜索生命周期诊断：记录 /s 请求开始与 wiseSearchHasAd 请求开始，和 proto 响应完成时间对照
-# 9) 第二搜索入口诊断：/searchbox 深挖已完成，cmd=169 已排除为当前广告主体；停止通用 body 深层探针。
-# 10) ECOM 预取/预渲染诊断：定点观察 ldy_ajax_prefetch_flag / imlp_prerender，记录模块请求时间和
-#     运行时 resultClass / 指定商业 data-srcid / ec_wise_ad / ec_r_* 数量，不记录关键词或落地页 URL。
-# 11) 搜索容器诊断：定点读取 m.baidu.com/searchframe 与 /sf 的响应结构，只记录长度与广告结构标志。
+# Baidu main App ad filtering - v1 experimental rewrite
+# Scope:
+# 1) Modify AFD remote ad-control configuration to disable search / Feed / selected splash-ad capabilities.
+# 2) Apply request-side + response-side sanitization to splash cmd=2010:
+#    - Request side: clear adinfo.s / adinfo.d / final_backup_key to weaken local cached-ad fallback.
+#    - Response side: clear live splash-ad data.mt / data.ukey / final_backup_realtime_info.
+# 3) Precisely reject splash_*.mp4 assets under search-splash.cdn.bcebos.com.
+# 4) Persistently record suspected splash prefetch/asset requests and automatically print recent candidate history on each splash launch.
+# 5) Search-ad source: directly handle the application/x-protobuffer main search response from m.baidu.com/s,
+#    removing ec_r_* -> ec_wise_ad ad HTML with equal-length replacement before the first SP-engine render without changing Protobuf/frame length.
+# 6) Keep wiseSearchHasAd only as the final fallback for search ads not covered by upstream structures.
+# 7) Search diagnostics: at runtime, wiseSearchHasAd sends counts for t / ec_wise_ad / ec_r_* / dynamic i[]
+#    to same-origin __qx_baidu_search_diag; QX intercepts it locally with HTTP 204 and does not forward it to Baidu.
+# 8) Search lifecycle diagnostics: record /s request start and wiseSearchHasAd request start for comparison with proto-response completion time.
+# 9) Secondary search-entry diagnostics: /searchbox investigation is complete; cmd=169 has been ruled out as the current main ad source; stop the general deep body probe.
+# 10) ECOM prefetch/prerender diagnostics: target ldy_ajax_prefetch_flag / imlp_prerender, recording module request timing and
+#     runtime counts for resultClass / selected commercial data-srcid / ec_wise_ad / ec_r_* without recording keywords or landing-page URLs.
+# 11) Search-container diagnostics: target responses from m.baidu.com/searchframe and /sf, recording only lengths and ad-structure markers.
 #
-# 临时单变量实验（2026-08-31）：直接 REJECT m.baidu.com/s 主搜索请求。
-# 当前结果已确认：/s hard reject 后仍会先出现广告再消失，因此继续保留 hard reject，寻找预加载/预渲染链。
+# Temporary single-variable experiment (2026-08-31): directly REJECT the main m.baidu.com/s search request.
+# Confirmed result: ads still appear briefly and then disappear after /s is hard-rejected, so keep the hard reject while locating the preload/prerender path.
 #
-# 注意：这是 v1 实验版，仅处理已确认结构或低风险候选链路；
-# splash MP4 规则仅匹配 search-splash 专用主机 + splash_*.mp4，不扩大为整个 bcebos.com REJECT。
-# 搜索 Protobuf 清理器采用 fail-open + 等长覆盖，并设置广告块数量/覆盖比例安全阈值。
+# Note: this is an experimental v1 and only handles confirmed structures or low-risk candidate paths.
+# The splash MP4 rule matches only the dedicated search-splash host + splash_*.mp4 and does not expand to a blanket bcebos.com REJECT.
+# The search Protobuf cleaner uses fail-open + equal-length replacement with safety thresholds for ad-block count/coverage ratio.
 
-^https:\/\/afdconf\.baidu\.com\/afd\/platform(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-json-v1.js
-^https?:\/\/mbd\.baidu\.com\/searchbox\?(?=(?:[^&]*&)*action=splash(?:&|$))(?=(?:[^&]*&)*cmd=2010(?:&|$)).* url script-request-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-request-v1.js
-^https?:\/\/mbd\.baidu\.com\/searchbox\?(?=(?:[^&]*&)*action=splash(?:&|$))(?=(?:[^&]*&)*cmd=2010(?:&|$)).* url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-json-v1.js
+^https:\/\/afdconf\.baidu\.com\/afd\/platform(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-json-v1.js
+^https?:\/\/mbd\.baidu\.com\/searchbox\?(?=(?:[^&]*&)*action=splash(?:&|$))(?=(?:[^&]*&)*cmd=2010(?:&|$)).* url script-request-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-splash-request-v1.js
+^https?:\/\/mbd\.baidu\.com\/searchbox\?(?=(?:[^&]*&)*action=splash(?:&|$))(?=(?:[^&]*&)*cmd=2010(?:&|$)).* url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-json-v1.js
 ^https?:\/\/search-splash\.cdn\.bcebos\.com\/splash_[^?]*\.mp4(?:\?.*)?$ url reject
 
-# 开屏预缓存/备用链路持久化探针：仅记录 URL 结构，不记录 query 值/Cookie/Token。
-^https?:\/\/ecmb\.bdimg\.com(?::\d+)?\/.*(?:splash|launch|open[_-]?screen|preload|advert|\.mp4)(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v2.js
-^https?:\/\/[^\/]+\.jomoxc\.com(?::\d+)?\/.*(?:splash|launch|open[_-]?screen|preload|advert|\.mp4)(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v2.js
-^https?:\/\/mobads\.baidu\.com(?::\d+)?\/.*$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v2.js
-^https?:\/\/baichuan\.baidu\.com\/rs\/adpmobile\/launch(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v2.js
-^https?:\/\/cover\.baidu\.com\/cover\/page\/dspSwitchAds\/(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v2.js
-^https?:\/\/afd\.baidu\.com\/afd\/entry(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v2.js
-^https?:\/\/mbd\.baidu\.com\/searchbox\?(?=(?:[^&]*&)*action=(?:preload|launch)(?:&|$)).* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-splash-cache-probe-v2.js
+# Persistent splash pre-cache/fallback probe: record URL structure only; do not record query values, Cookie, or Token.
+^https?:\/\/ecmb\.bdimg\.com(?::\d+)?\/.*(?:splash|launch|open[_-]?screen|preload|advert|\.mp4)(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-splash-cache-probe-v2.js
+^https?:\/\/[^\/]+\.jomoxc\.com(?::\d+)?\/.*(?:splash|launch|open[_-]?screen|preload|advert|\.mp4)(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-splash-cache-probe-v2.js
+^https?:\/\/mobads\.baidu\.com(?::\d+)?\/.*$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-splash-cache-probe-v2.js
+^https?:\/\/baichuan\.baidu\.com\/rs\/adpmobile\/launch(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-splash-cache-probe-v2.js
+^https?:\/\/cover\.baidu\.com\/cover\/page\/dspSwitchAds\/(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-splash-cache-probe-v2.js
+^https?:\/\/afd\.baidu\.com\/afd\/entry(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-splash-cache-probe-v2.js
+^https?:\/\/mbd\.baidu\.com\/searchbox\?(?=(?:[^&]*&)*action=(?:preload|launch)(?:&|$)).* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-splash-cache-probe-v2.js
 
-# 临时单变量实验：完全阻断当前 m.baidu.com/s 主搜索请求。
-# 已验证 /s 被切断后仍能先出现广告再消失，所以首帧广告不依赖当前 /s。
+# Temporary single-variable experiment: completely block the current m.baidu.com/s main search request.
+# Verified: ads still appear briefly and then disappear after /s is cut off, so the first-frame ad does not depend on the current /s request.
 ^https:\/\/m\.baidu\.com\/s\?.* url reject
 
-# 搜索容器 /sf 定点诊断：只读请求生命周期与响应结构；不修改 body。
-^https:\/\/m\.baidu\.com\/(?:searchframe|sf)(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-frame-probe-v1.js
-^https:\/\/m\.baidu\.com\/(?:searchframe|sf)(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-frame-probe-v1.js
+# Search-container /sf targeted diagnostics: read-only request lifecycle and response structure; do not modify the body.
+^https:\/\/m\.baidu\.com\/(?:searchframe|sf)(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-search-frame-probe-v1.js
+^https:\/\/m\.baidu\.com\/(?:searchframe|sf)(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-search-frame-probe-v1.js
 
-# 第二搜索入口 header 探针：排除 /s、本地诊断 beacon、searchframe、sf，以及 mbd/h2mbd 的 /searchbox。
-# /searchbox 已完成分析；searchframe/sf 专门交给上面的 body 探针，避免 header/body 重叠。
-^https:\/\/m\.baidu\.com\/(?!(?:s(?:\?|$)|searchframe(?:\?|$)|sf(?:\?|$)|__qx_baidu_search_diag(?:\?|$))).* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
-^https:\/\/m\.baidu\.com\/(?!(?:s(?:\?|$)|searchframe(?:\?|$)|sf(?:\?|$)|__qx_baidu_search_diag(?:\?|$))).* url script-response-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
-^https:\/\/(?:mbd|h2mbd)\.baidu\.com\/(?!searchbox(?:\?|$)).* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
-^https:\/\/(?:mbd|h2mbd)\.baidu\.com\/(?!searchbox(?:\?|$)).* url script-response-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
-^https:\/\/www\.baidu\.com\/.* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
-^https:\/\/www\.baidu\.com\/.* url script-response-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
+# Secondary search-entry header probe: exclude /s, the local diagnostic beacon, searchframe, sf, and /searchbox on mbd/h2mbd.
+# /searchbox analysis is complete; searchframe/sf are handled by the dedicated body probe above to avoid header/body overlap.
+^https:\/\/m\.baidu\.com\/(?!(?:s(?:\?|$)|searchframe(?:\?|$)|sf(?:\?|$)|__qx_baidu_search_diag(?:\?|$))).* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-search.js
+^https:\/\/m\.baidu\.com\/(?!(?:s(?:\?|$)|searchframe(?:\?|$)|sf(?:\?|$)|__qx_baidu_search_diag(?:\?|$))).* url script-response-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-search.js
+^https:\/\/(?:mbd|h2mbd)\.baidu\.com\/(?!searchbox(?:\?|$)).* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-search.js
+^https:\/\/(?:mbd|h2mbd)\.baidu\.com\/(?!searchbox(?:\?|$)).* url script-response-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-search.js
+^https:\/\/www\.baidu\.com\/.* url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-search.js
+^https:\/\/www\.baidu\.com\/.* url script-response-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-search.js
 
-# 搜索运行时诊断：页面只产生本地诊断 beacon，QX 打印后直接 204，不向百度上游发送。
-^https:\/\/m\.baidu\.com\/__qx_baidu_search_diag(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
+# Search runtime diagnostics: the page emits only a local diagnostic beacon; QX prints it and returns 204 without sending it upstream to Baidu.
+^https:\/\/m\.baidu\.com\/__qx_baidu_search_diag(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-search.js
 
-# ECOM 请求时间点诊断。
-^https:\/\/nv00\.cdn\.bcebos\.com\/nv01\/static\/ecom\/amd\/wiseSearchHasAd-.*-chunk\.js url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
+# ECOM request-timing diagnostics.
+^https:\/\/nv00\.cdn\.bcebos\.com\/nv01\/static\/ecom\/amd\/wiseSearchHasAd-.*-chunk\.js url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-search.js
 
-# ECOM 预取/预渲染模块：记录请求时间，并在模块运行时记录已有商业结果 DOM 数量。
-^https:\/\/nv00\.cdn\.bcebos\.com\/nv01\/static\/ecom\/amd\/(?:ldy_ajax_prefetch_flag|imlp_prerender)-.*-chunk\.js url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-prerender-probe-v1.js
-^https:\/\/nv00\.cdn\.bcebos\.com\/nv01\/static\/ecom\/amd\/(?:ldy_ajax_prefetch_flag|imlp_prerender)-.*-chunk\.js url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search-prerender-probe-v1.js
+# ECOM prefetch/prerender modules: record request timing and runtime counts of existing commercial-result DOM nodes.
+^https:\/\/nv00\.cdn\.bcebos\.com\/nv01\/static\/ecom\/amd\/(?:ldy_ajax_prefetch_flag|imlp_prerender)-.*-chunk\.js url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-search-prerender-probe-v1.js
+^https:\/\/nv00\.cdn\.bcebos\.com\/nv01\/static\/ecom\/amd\/(?:ldy_ajax_prefetch_flag|imlp_prerender)-.*-chunk\.js url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-search-prerender-probe-v1.js
 
-# 搜索广告最终兜底：wiseSearchHasAd 使用百度原生 t selector / i[] 清理已经进入页面的广告卡。
-^https:\/\/nv00\.cdn\.bcebos\.com\/nv01\/static\/ecom\/amd\/wiseSearchHasAd-.*-chunk\.js url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E7%99%BE%E5%BA%A6%E6%8B%A6%E6%88%AA/baidu-app-search.js
+# Final search-ad fallback: wiseSearchHasAd uses Baidu's native t selector / i[] to clean ad cards already inserted into the page.
+^https:\/\/nv00\.cdn\.bcebos\.com\/nv01\/static\/ecom\/amd\/wiseSearchHasAd-.*-chunk\.js url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Baidu/baidu-app-search.js
 
 hostname = afdconf.baidu.com, mbd.baidu.com, h2mbd.baidu.com, www.baidu.com, m.baidu.com, search-splash.cdn.bcebos.com, ecmb.bdimg.com, *.jomoxc.com, mobads.baidu.com, baichuan.baidu.com, cover.baidu.com, afd.baidu.com, nv00.cdn.bcebos.com

@@ -1,11 +1,11 @@
-// 百度主 App 开屏请求侧净化 - v1
+// Baidu main App splash request sanitization - v1
 // Quantumult X script-request-body
-// HAR 已确认请求格式：application/x-www-form-urlencoded
-// body: data=<URL 编码后的 JSON>
-// 目标：
-// 1) 清空本地开屏广告候选 adinfo.s / adinfo.d，并清空 final_backup_key。
-// 2) 每次 splash 启动时打印持久化探针保存的近期疑似开屏预取记录。
-// 其余启动参数保持不变；解析失败时 fail-open 原样放行。
+// HAR-confirmed request format: application/x-www-form-urlencoded
+// body: data=<URL-encoded JSON>
+// Goals:
+// 1) Clear local splash-ad candidates adinfo.s / adinfo.d and final_backup_key.
+// 2) On every splash launch, print recent suspected splash prefetch records saved by the persistent probe.
+// Keep all other launch parameters unchanged; fail open and pass through the original request on parse errors.
 
 (() => {
   const originalBody = $request?.body;
@@ -14,7 +14,7 @@
   dumpSplashCacheHistory();
 
   if (typeof originalBody !== "string" || originalBody.length === 0) {
-    console.log("百度App v1 / splash-request: 无文本请求体，原样放行");
+    console.log("Baidu App v1 / splash-request: no text request body, passing through unchanged");
     $done({ body: originalBody });
     return;
   }
@@ -23,26 +23,26 @@
     const result = rewriteFormBody(originalBody);
 
     if (!result.matched) {
-      console.log("百度App v1 / splash-request: 未找到 data 表单字段，原样放行");
+      console.log("Baidu App v1 / splash-request: data form field not found, passing through unchanged");
       $done({ body: originalBody });
       return;
     }
 
     if (!result.changed) {
-      console.log("百度App v1 / splash-request: 无需修改开屏请求字段");
+      console.log("Baidu App v1 / splash-request: no splash request fields need changes");
       $done({ body: originalBody });
       return;
     }
 
     console.log(
-      `百度App v1 / splash-request: adinfo.s ${result.beforeS}->0, ` +
+      `Baidu App v1 / splash-request: adinfo.s ${result.beforeS}->0, ` +
       `adinfo.d ${result.beforeD}->0, final_backup_key ${result.hadBackupKey ? "cleared" : "already-empty"}`
     );
-    console.log("百度App v1 / splash-request: 请求侧净化完成");
+    console.log("Baidu App v1 / splash-request: request-side sanitization complete");
 
     $done({ body: result.body });
   } catch (error) {
-    console.log(`百度App v1 / splash-request: 解析失败，原样放行: ${error}`);
+    console.log(`Baidu App v1 / splash-request: parse failed, passing through unchanged: ${error}`);
     $done({ body: originalBody });
   }
 })();
@@ -112,7 +112,7 @@ function rewriteFormBody(body) {
     const data = JSON.parse(decoded);
 
     if (!data || typeof data !== "object" || Array.isArray(data)) {
-      throw new Error("data 不是 JSON object");
+      throw new Error("data is not a JSON object");
     }
 
     if (data.adinfo && typeof data.adinfo === "object" && !Array.isArray(data.adinfo)) {
@@ -132,7 +132,7 @@ function rewriteFormBody(body) {
         }
       }
 
-      // adinfo.v 为 HAR 中存在的版本/状态字段，保留不动。
+      // adinfo.v is a version/state field present in the HAR; leave it unchanged.
     }
 
     if (typeof data.final_backup_key === "string") {
