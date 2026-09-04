@@ -1,0 +1,35 @@
+# Tencent Video persist-conn WebSocket isolation test - v1
+# Based on 腾讯4.har analysis (2026-09-04)
+#
+# EXPERIMENT ONLY — do not merge into stable rules yet.
+#
+# Purpose:
+#   Test whether Tencent Video's persistent WebSocket channel participates in
+#   restoring or refreshing the remaining GDT ad-object pool that survives the
+#   stable MVL filtering.
+#
+# Target observed in HAR:
+#   https://persist-conn.video.qq.com/ws_proxy
+#   HTTP 101 Switching Protocols
+#
+# Test conditions:
+#   1) Enable the stable tencent-video-mvl-v1.snippet.
+#   2) Enable this snippet as the ONLY new variable.
+#   3) Disable MVL tombstone / IACC experiments / Advertising.list.
+#   4) Do NOT clear Tencent Video cache and do NOT reinstall the app.
+#   5) Fully kill Tencent Video, then cold-start it.
+#
+# Interpretation:
+#   A) Remaining GDT ads stop appearing/rotating while normal functions work
+#      -> persist-conn likely participates in ad-pool restore/refresh.
+#   B) Ads remain normal
+#      -> persist-conn can be largely excluded for this ad path.
+#   C) Ads disappear but normal real-time features also fail
+#      -> mixed-purpose channel; host-wide blocking is not suitable as a final rule.
+#
+# The HAR records the WebSocket upgrade as HTTPS + HTTP 101, so reject the
+# handshake request itself before the persistent connection is established.
+
+^https?:\/\/persist-conn\.video\.qq\.com\/ws_proxy(?:\?.*)?$ url reject
+
+hostname = persist-conn.video.qq.com
