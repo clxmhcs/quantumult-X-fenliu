@@ -1,18 +1,21 @@
-// 优酷 UPS 去广告 - 前置广告实验版 + 商业 Banner 稳定处理
+// Youku UPS ad filtering - pre-roll ads + commercial Banner handling
 // Quantumult X script-response-body
 //
-// 依据：
-// 1) 2026-09-02 youku.har / youku1.har / youku3.har / youku4.har：
-//    商业化 Banner 视频可由 owner + title 双条件精确识别，并清空其播放流。
-// 2) 2026-09-03 优酷(1).har：
-//    正常剧集 UPS 响应的 data.data.ad.seats[].bids[] 直接下发前置广告计划；
-//    data.data.ad.BFSTREAM 提供广告备用播放流；vip_tips 属于广告 UI。
+// Evidence:
+// 1) 2026-09-02 youku.har / youku1.har / youku3.har / youku4.har:
+//    Commercial Banner videos can be identified precisely by the owner + title pair,
+//    then their playback streams can be cleared.
+// 2) 2026-09-03 Youku(1).har:
+//    data.data.ad.seats[].bids[] in a normal episode UPS response directly carries
+//    the complete pre-roll ad plan; data.data.ad.BFSTREAM provides fallback ad streams,
+//    and vip_tips belongs to the ad UI.
 //
-// 本轮实验：
-// - 正常剧集仅清空前置广告 payload：ad.seats=[]、ad.BFSTREAM={}、删除 ad.vip_tips。
-// - 不修改正片 data.stream / data.video / 播放权限。
-// - 商业 Banner 视频继续沿用已验证的 stream 清空逻辑。
-// - JSON 解析失败或结构异常时 fail-open 原样放行。
+// Stable behavior:
+// - For normal episodes/videos, clear only the pre-roll ad payload:
+//   ad.seats=[], ad.BFSTREAM={}, and remove ad.vip_tips.
+// - Do not modify main-content data.stream / data.video / playback permissions.
+// - Keep the verified stream-clearing logic for commercial Banner videos.
+// - Fail open and return the original response on JSON parse or structure errors.
 
 (() => {
   const originalBody = $response?.body;
@@ -20,7 +23,7 @@
   console.log("youku-commercial-v1 pread-test 2026-09-03");
 
   if (typeof originalBody !== "string" || originalBody.length === 0) {
-    console.log("优酷UPS去广告: 无文本响应体，原样放行");
+    console.log("Youku UPS ad filter: no text response body, passing through unchanged");
     $done({ body: originalBody });
     return;
   }
@@ -29,7 +32,7 @@
   try {
     body = JSON.parse(originalBody);
   } catch (error) {
-    console.log(`优酷UPS去广告: JSON解析失败，原样放行: ${error}`);
+    console.log(`Youku UPS ad filter: JSON parse failed, passing through unchanged: ${error}`);
     $done({ body: originalBody });
     return;
   }
@@ -37,7 +40,7 @@
   const data = body?.data?.data;
 
   if (!data || typeof data !== "object" || Array.isArray(data)) {
-    console.log("优酷UPS去广告: 未发现 data.data，原样放行");
+    console.log("Youku UPS ad filter: data.data not found, passing through unchanged");
     $done({ body: originalBody });
     return;
   }
@@ -46,6 +49,7 @@
   const uploaderUsername = data?.uploader?.username;
   const title = data?.video?.title;
 
+  // These two literals are exact server payload values. Do not translate them.
   const commercialOwner =
     videoUsername === "商业化页面banner素材专用" ||
     uploaderUsername === "商业化页面banner素材专用";
@@ -56,10 +60,11 @@
 
   let changed = 0;
 
-  // ===== 正常剧集 / 视频的 UPS 前置广告 =====
-  // 优酷(1).har 已确认：seats[].bids[] 是完整前置广告序列；
-  // BFSTREAM 是广告备用流；vip_tips 是广告 UI。
-  // 这里不删除整个 ad 对象，保留 reqid / algoBuckets 等外围结构，降低兼容风险。
+  // ===== UPS pre-roll ads for normal episodes/videos =====
+  // Youku(1).har confirmed that seats[].bids[] is the complete pre-roll ad sequence,
+  // BFSTREAM is the fallback ad stream, and vip_tips is ad UI metadata.
+  // Keep the outer ad object and fields such as reqid / algoBuckets to reduce
+  // compatibility risk.
   const ad = data?.ad;
   if (ad && typeof ad === "object" && !Array.isArray(ad)) {
     const summary = summarizePreAd(ad);
@@ -88,17 +93,17 @@
     if (preAdChanged > 0) {
       changed += preAdChanged;
       console.log(
-        `优酷前置广告: 已清理 title=${title || "unknown"} ` +
+        `Youku pre-roll ads: cleaned title=${title || "unknown"} ` +
         `seats=${summary.seatCount}->0 bids=${summary.bidCount}->0 ` +
         `duration=${summary.totalDuration}s changed=${preAdChanged}`
       );
     } else {
-      console.log(`优酷前置广告: 无需处理 title=${title || "unknown"}`);
+      console.log(`Youku pre-roll ads: no changes needed title=${title || "unknown"}`);
     }
   }
 
-  // ===== 商业化 Banner 子视频 =====
-  // 继续保留此前已经实机验证过的精确识别与播放流清空逻辑。
+  // ===== Commercial Banner sub-video =====
+  // Keep the previously verified exact matching and playback-stream clearing logic.
   if (commercialOwner && commercialTitle) {
     let commercialChanged = 0;
     const streamCount = Array.isArray(data.stream) ? data.stream.length : 0;
@@ -134,16 +139,17 @@
 
     if (commercialChanged > 0) {
       console.log(
-        `优酷商业化广告: 已拦截 title=${title || "unknown"} ` +
+        `Youku commercial ad: blocked title=${title || "unknown"} ` +
         `stream=${streamCount}->0 changed=${commercialChanged}`
       );
     } else {
       console.log(
-        `优酷商业化广告: 已命中商业素材但无需修改 title=${title || "unknown"} stream=${streamCount}`
+        `Youku commercial ad: commercial asset matched but no changes needed ` +
+        `title=${title || "unknown"} stream=${streamCount}`
       );
     }
   } else {
-    console.log(`优酷商业化广告: 正常视频 title=${title || "unknown"}`);
+    console.log(`Youku commercial ad: normal video title=${title || "unknown"}`);
   }
 
   if (changed === 0) {

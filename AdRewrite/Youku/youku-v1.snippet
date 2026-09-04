@@ -1,26 +1,32 @@
-# 优酷广告拦截 - 稳定基线
-# 文件名保留 youku-v1.snippet，以兼容已添加的远程重写地址。
+# Youku ad filtering - stable baseline
+# Keep the filename youku-v1.snippet for compatibility with existing remote rewrite entries.
 #
-# 当前已实机验证：
-# 1) UPS 前置广告：youku-commercial-v1.js 清空 data.data.ad.seats、BFSTREAM，并删除 vip_tips；正片 stream/video 不动。
-# 2) UPS 商业化 Banner 子视频：继续使用 owner + title 双条件精确识别后清空其播放流。
-# 3) 免费内容 pl-ali M3U8：请求阶段仅将 advInfo 改为空数组 []，用于抑制另一套动态拼接广告；其它参数不动。
-# 4) M3U8 响应诊断/删除实验均已退出当前生产链路；诊断与过滤脚本仅保留在仓库用于后续排障。
-# 5) HTTPS 已确认广告路径继续由 rewrite 层 url reject。
-# 6) “学习时刻”只拦截已确认的唯一 H5 落地页和唯一素材 URL，不扩大到公共域名。
-# 7) 已撤销 kuflix_space -> data={} 实验：会破坏正常播放，禁止恢复。
+# Verified behavior:
+# 1) UPS pre-roll ads: youku-commercial-v1.js clears data.data.ad.seats and BFSTREAM,
+#    removes vip_tips, and leaves the main-content stream/video untouched.
+# 2) UPS commercial Banner sub-videos: keep the exact owner + title match, then clear
+#    the matched commercial asset's playback stream.
+# 3) Free-content pl-ali M3U8: at request time, replace only advInfo with an empty array []
+#    to suppress a separate dynamic ad-stitching path; leave all other parameters unchanged.
+# 4) M3U8 response diagnostics/removal experiments are no longer in the production path.
+#    Diagnostic and filter scripts are retained only for future troubleshooting.
+# 5) Confirmed HTTPS ad paths continue to be rejected at the rewrite layer.
+# 6) The "Study Moment" item blocks only the single confirmed H5 landing page and the
+#    single confirmed asset URL; do not broaden the rule to shared public domains.
+# 7) The kuflix_space -> data={} experiment was reverted because it breaks normal playback.
+#    Do not restore it.
 
-# ===== 优酷 UPS：前置广告 + 商业化 Banner =====
-^https:\/\/un-acs\.youku\.com\/gw\/mtop\.youku\.play\.ups\.appinfo\.get\/1\.1(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E4%BC%98%E9%85%B7%E6%8B%A6%E6%88%AA/youku-commercial-v1.js
+# ===== Youku UPS: pre-roll ads + commercial Banner =====
+^https:\/\/un-acs\.youku\.com\/gw\/mtop\.youku\.play\.ups\.appinfo\.get\/1\.1(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Youku/youku-commercial-v1.js
 
-# ===== 免费内容 M3U8：请求侧 advInfo=[] =====
-^https?:\/\/pl-ali\.youku\.com\/playlist\/m3u8(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/%E5%B9%BF%E5%91%8A%E6%8B%A6%E6%88%AA/%E4%BC%98%E9%85%B7%E6%8B%A6%E6%88%AA/youku-m3u8-request-v1.js
+# ===== Free-content M3U8: request-side advInfo=[] =====
+^https?:\/\/pl-ali\.youku\.com\/playlist\/m3u8(?:\?.*)?$ url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/Youku/youku-m3u8-request-v1.js
 
-# ===== 第三方广告组件 / 优酷商业素材 =====
+# ===== Third-party ad components / Youku commercial assets =====
 ^https?:\/\/lf-cdn-tos\.bytescm\.com\/obj\/static\/ad\/.*$ url reject
 ^https?:\/\/youku-crm-product\.youku\.com\/creative-center\/.*$ url reject
 
-# ===== 首页“学习时刻”精确拦截 =====
+# ===== Home-page Study Moment: exact-match blocking =====
 ^https:\/\/o\.youku\.com\/m\/u07ljj6bit(?:\?.*)?$ url reject
 ^https?:\/\/liangcang-material\.alicdn\.com\/prod\/upload\/e87cf4ecc6b24721b068dccf9500ad9a\.webp\.jpg(?:\?.*)?$ url reject
 
