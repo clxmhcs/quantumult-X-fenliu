@@ -1,0 +1,14 @@
+# Tencent Video App home-feed ad filtering - v1
+# Based on 2026-09-04 腾讯.har
+#
+# Target:
+#   i.video.qq.com tRPC MVLPageService/getMVLPage
+#
+# The response is a 16-byte tRPC frame header followed by protobuf data.
+# The script removes verified ad modules only and updates the tRPC total frame length.
+# It does NOT block Tencent video/image CDN domains and does NOT modify vv.video.qq.com,
+# svv.video.qq.com, richmedia.video.qq.com, ltscsy.qq.com or ltshsy.gtimg.com.
+
+^https?:\/\/i\.video\.qq\.com\/(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/TencentVideo/tencent-video-mvl-proto-v1.js
+
+hostname = i.video.qq.com
