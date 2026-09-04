@@ -1,0 +1,21 @@
+# Tencent Video cached GDT creative rejection test - v1
+# Based on 2026-09-04 腾讯2.har + 1547.log
+#
+# EXPERIMENT ONLY — do not merge into the stable Tencent Video rules yet.
+# Purpose:
+#   Verify what Tencent Video/GDT does when a cached ad object tries to load
+#   its creative from pgdt.gtimg.cn and that creative request is rejected.
+#
+# Expected observations:
+#   A) whole ad card disappears/collapses  -> downstream creative rejection may be viable
+#   B) card remains but image/video is blank -> must continue upstream to GDT ad-object/cache layer
+#
+# Keep the existing MVL rewrite enabled.
+# Do NOT clear Tencent Video cache before this test.
+# Disable other Advertising.list rules so pgdt rejection is the only new variable.
+#
+# Rejection is intentionally host-wide for this one controlled experiment only.
+
+^https?:\/\/pgdt\.gtimg\.cn\/.* url reject
+
+hostname = pgdt.gtimg.cn
