@@ -1,0 +1,14 @@
+# Tencent Video iacc diagnostic probe - v1
+# Based on 2026-09-04 腾讯1.har clean-install baseline
+#
+# Experimental diagnostics only:
+#   - observes iacc.qq.com binary responses
+#   - logs JceGodId / response bytes / entropy / printable ratio / first 16 bytes
+#   - NEVER modifies the response
+#
+# Use together with the existing stable MVL rewrite when capturing 腾讯2.har.
+# This probe is intentionally separate from tencent-video-mvl-v1.snippet.
+
+^https?:\/\/iacc\.qq\.com\/(?:\?.*)?$ url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/AdRewrite/TencentVideo/tencent-video-iacc-probe-v1.js
+
+hostname = iacc.qq.com
