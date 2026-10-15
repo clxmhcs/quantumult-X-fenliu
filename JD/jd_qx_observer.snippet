@@ -1,5 +1,21 @@
-; JD Traffic Observer for Quantumult X
-; Import this file as a Rewrite remote resource. Do NOT import jd_qx_observer.js directly as a resource.
-hostname = jd.com, *.jd.com
+; JD Wide Traffic Observer for Quantumult X
+; Import this file as a Rewrite remote resource.
+; Do NOT import jd_qx_observer.js directly as a resource.
+;
+; This snippet observes both headers and bodies for JD HTTP(S) traffic that
+; already enters QX MITM/rewrite. It also asks QX to MITM the IPv6 endpoint
+; previously seen during JD search diagnostics.
+
+hostname = jd.com, *.jd.com, 2402:db40:5100:1011::5
+
+; JD domains - request/response headers + bodies
+^https?:\/\/(?:[^\/]+\.)?jd\.com(?:\/|$) url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/JD/jd_qx_observer.js
 ^https?:\/\/(?:[^\/]+\.)?jd\.com(?:\/|$) url script-request-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/JD/jd_qx_observer.js
+^https?:\/\/(?:[^\/]+\.)?jd\.com(?:\/|$) url script-response-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/JD/jd_qx_observer.js
 ^https?:\/\/(?:[^\/]+\.)?jd\.com(?:\/|$) url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/JD/jd_qx_observer.js
+
+; Direct IPv6 endpoint observed in Proxyman
+^https?:\/\/\[2402:db40:5100:1011::5\](?::443)?(?:\/|$) url script-request-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/JD/jd_qx_observer.js
+^https?:\/\/\[2402:db40:5100:1011::5\](?::443)?(?:\/|$) url script-request-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/JD/jd_qx_observer.js
+^https?:\/\/\[2402:db40:5100:1011::5\](?::443)?(?:\/|$) url script-response-header https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/JD/jd_qx_observer.js
+^https?:\/\/\[2402:db40:5100:1011::5\](?::443)?(?:\/|$) url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/JD/jd_qx_observer.js
