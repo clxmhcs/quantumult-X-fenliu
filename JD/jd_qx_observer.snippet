@@ -1,0 +1,5 @@
+; JD Traffic Observer for Quantumult X
+; Import this file as a Rewrite remote resource. Do NOT import jd_qx_observer.js directly as a resource.
+hostname = jd.com, *.jd.com
+^https?:\/\/(?:[^\/]+\.)?jd\.com(?:\/|$) url script-request-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/JD/jd_qx_observer.js
+^https?:\/\/(?:[^\/]+\.)?jd\.com(?:\/|$) url script-response-body https://raw.githubusercontent.com/clxmhcs/quantumult-X-fenliu/main/JD/jd_qx_observer.js
