@@ -1,134 +1,94 @@
-/* JD Global Discovery + targeted api.m.jd.com diagnostics for Quantumult X */
+/*
+ * Quantumult X global HTTP(S) metadata observer
+ *
+ * TEMPORARY diagnostic mode for JD search investigation.
+ * - No host/User-Agent filtering.
+ * - No request/response body logging.
+ * - No Cookie, token, authorization, signature, query-string, or other
+ *   sensitive header values are logged.
+ * - Never modifies traffic.
+ */
 
-var PREFIX = "[JD-DISCOVERY]";
-var TARGET = "[JD-TARGET]";
-var PREVIEW = 16000;
-var CHUNK = 3000;
+var PREFIX = "[QX-GLOBAL]";
 
 function getHeader(headers, name) {
   headers = headers || {};
-  var n = String(name || "").toLowerCase();
+  var target = String(name || "").toLowerCase();
   var keys = Object.keys(headers);
   for (var i = 0; i < keys.length; i++) {
-    if (String(keys[i]).toLowerCase() === n) return String(headers[keys[i]] || "");
+    if (String(keys[i]).toLowerCase() === target) {
+      return String(headers[keys[i]] || "");
+    }
   }
   return "";
 }
 
 function parseUrl(raw) {
   raw = String(raw || "");
-  var out = { host: "", path: "/", raw: raw };
-  var m = raw.match(/^https?:\/\/([^\/?#]+)([^?#]*)/i);
-  if (m) {
-    out.host = m[1] || "";
-    out.path = m[2] || "/";
-  }
+  var out = { scheme: "", host: "", path: "/" };
+  try {
+    var m = raw.match(/^(https?):\/\/([^\/?#]+)([^?#]*)/i);
+    if (m) {
+      out.scheme = String(m[1] || "").toLowerCase();
+      out.host = m[2] || "";
+      out.path = m[3] || "/";
+    }
+  } catch (_) {}
   return out;
 }
 
-function looksLikeJD(req, parsed) {
-  if (!req) return false;
-  var h = req.headers || {};
-  var ua = getHeader(h, "User-Agent");
-  var host = String(parsed.host || "").toLowerCase();
-  return /(JD4iPhone|jdmall|jdapp|com\.360buy\.jdmobile)/i.test(ua) ||
-         !!getHeader(h, "JD-APP") || !!getHeader(h, "JD-STD") ||
-         /(^|\.)jd\.com(?::\d+)?$/i.test(host);
+function uaClass(ua) {
+  ua = String(ua || "");
+  if (/JD4iPhone/i.test(ua)) return "JD4iPhone";
+  if (/jdmall/i.test(ua)) return "jdmall";
+  if (/jdapp/i.test(ua)) return "jdapp";
+  if (/Cronet/i.test(ua)) return "Cronet";
+  if (/CFNetwork/i.test(ua)) return "CFNetwork";
+  if (/AppleWebKit|Mobile\//i.test(ua)) return "WebKit";
+  if (/okhttp/i.test(ua)) return "okhttp";
+  if (/Mozilla/i.test(ua)) return "Mozilla";
+  return ua ? "other" : "none";
 }
 
-function isTarget(req, parsed) {
-  return req && String(req.method || "").toUpperCase() === "POST" &&
-         String(parsed.host || "").toLowerCase().replace(/:443$/, "") === "api.m.jd.com" &&
-         String(parsed.path || "/") === "/";
-}
-
-function redactText(text) {
-  var s = String(text || "");
-  s = s.replace(/((?:pin|eid|uuid|token|access_token|authorization|cookie|sign)=)[^&\s]*/ig, "$1<redacted>");
-  s = s.replace(/("(?:pin|eid|uuid|token|access_token|authorization|cookie|sign)"\s*:\s*")[^"]*(")/ig, "$1<redacted>$2");
-  return s;
-}
-
-function formInfo(body) {
-  var s = String(body || "");
-  var info = { keys: [], functionId: "", bodyLen: 0, bodyPreview: "" };
-  if (!s) return info;
-  var pairs = s.split("&");
-  for (var i = 0; i < pairs.length; i++) {
-    var p = pairs[i];
-    var eq = p.indexOf("=");
-    var k = eq >= 0 ? p.slice(0, eq) : p;
-    var v = eq >= 0 ? p.slice(eq + 1) : "";
-    try { k = decodeURIComponent(k.replace(/\+/g, " ")); } catch (_) {}
-    if (info.keys.indexOf(k) < 0) info.keys.push(k);
-    if (/^functionId$/i.test(k)) {
-      try { info.functionId = decodeURIComponent(v.replace(/\+/g, " ")); } catch (_) { info.functionId = v; }
-    }
-    if (/^body$/i.test(k)) {
-      info.bodyLen = v.length;
-      info.bodyPreview = redactText(v.slice(0, 2048));
-    }
-  }
-  return info;
-}
-
-function logChunks(label, value) {
-  var s = redactText(String(value || "")).slice(0, PREVIEW);
-  if (!s) return;
-  var total = Math.ceil(s.length / CHUNK);
-  for (var i = 0; i < s.length; i += CHUNK) {
-    console.log(TARGET + " " + label + " part=" + (Math.floor(i / CHUNK) + 1) + "/" + total + " " + s.slice(i, i + CHUNK));
-  }
+function safeStatus(res) {
+  if (!res) return "";
+  return String(res.statusCode || res.status || "");
 }
 
 try {
   var req = typeof $request !== "undefined" ? $request : null;
   var res = typeof $response !== "undefined" ? $response : null;
+
   if (!req) {
     $done({});
   } else {
     var parsed = parseUrl(req.url || "");
-    if (!looksLikeJD(req, parsed)) {
-      $done({});
-    } else {
-      var rh = req.headers || {};
-      var sh = res && res.headers ? res.headers : {};
-      var session = req.sessionIndex !== undefined ? req.sessionIndex : (res && res.sessionIndex !== undefined ? res.sessionIndex : "?");
-      var method = req.method || "";
-      var ua = getHeader(rh, "User-Agent");
-      var uaTag = /JD4iPhone/i.test(ua) ? "JD4iPhone" : (/jdmall/i.test(ua) ? "jdmall" : (/jdapp/i.test(ua) ? "jdapp" : "jd"));
-      var line = PREFIX + " " + (res ? "RESPONSE" : "REQUEST") +
-        " session=" + session +
-        " method=" + method +
-        " host=" + parsed.host +
-        " path=" + parsed.path +
-        " ua=" + uaTag +
-        " reqType=" + getHeader(rh, "Content-Type") +
-        " reqLen=" + getHeader(rh, "Content-Length");
-      if (res) {
-        line += " status=" + String(res.statusCode || res.status || "") +
-          " resType=" + getHeader(sh, "Content-Type") +
-          " resLen=" + (getHeader(sh, "Content-Length") || getHeader(sh, "Transfer-Encoding"));
-      }
-      console.log(line);
+    var reqHeaders = req.headers || {};
+    var resHeaders = res && res.headers ? res.headers : {};
+    var session = req.sessionIndex !== undefined
+      ? req.sessionIndex
+      : (res && res.sessionIndex !== undefined ? res.sessionIndex : "?");
 
-      if (isTarget(req, parsed)) {
-        var fi = formInfo(req.body);
-        console.log(TARGET + " " + (res ? "RESPONSE" : "REQUEST") +
-          " session=" + session +
-          " functionId=" + (fi.functionId || "<none>") +
-          " formKeys=" + fi.keys.join(",") +
-          " formBodyLen=" + fi.bodyLen +
-          (res ? (" status=" + String(res.statusCode || res.status || "") +
-                  " resType=" + getHeader(sh, "Content-Type") +
-                  " resBodyLen=" + String(res.body || "").length) : ""));
-        if (fi.bodyPreview) logChunks("FORM_BODY_PREVIEW session=" + session, fi.bodyPreview);
-        if (res && res.body) logChunks("RES_BODY_PREVIEW session=" + session, res.body);
-      }
-      $done({});
+    var line = PREFIX + " " + (res ? "RESPONSE" : "REQUEST") +
+      " session=" + session +
+      " method=" + String(req.method || "") +
+      " scheme=" + parsed.scheme +
+      " host=" + parsed.host +
+      " path=" + parsed.path +
+      " ua=" + uaClass(getHeader(reqHeaders, "User-Agent")) +
+      " reqType=" + getHeader(reqHeaders, "Content-Type") +
+      " reqLen=" + getHeader(reqHeaders, "Content-Length");
+
+    if (res) {
+      line += " status=" + safeStatus(res) +
+        " resType=" + getHeader(resHeaders, "Content-Type") +
+        " resLen=" + (getHeader(resHeaders, "Content-Length") || getHeader(resHeaders, "Transfer-Encoding"));
     }
+
+    console.log(line);
+    $done({});
   }
-} catch (e) {
-  console.log(PREFIX + " ERROR " + String(e));
+} catch (error) {
+  console.log(PREFIX + " ERROR " + String(error));
   $done({});
 }
